@@ -39,7 +39,8 @@ class SeqModel(object):
                  run_options = None,
                  run_metadata = None,
                  topk_n = 30,
-                 dtype=tf.float32):
+                 dtype=tf.float32,
+                 ):
         """Create the model.
         
         Args:
@@ -70,6 +71,7 @@ class SeqModel(object):
         self.topk_n = topk_n
         self.dtype = dtype
         self.vocab_size = vocab_size
+
 
         # some parameters
         with tf.device(devices[0]):
@@ -152,8 +154,7 @@ class SeqModel(object):
                     self.updates.append(opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step))
 
         self.saver = tf.train.Saver(tf.global_variables())
-        
-    
+        self.best_saver = tf.train.Saver(tf.global_variables())
 
 
     def init_beam_decoder(self,beam_size=10, max_steps = 30):

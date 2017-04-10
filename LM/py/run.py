@@ -19,6 +19,8 @@ import data_iterator
 from data_iterator import DataIterator
 from tensorflow.python.client import timeline
 
+from summary import ModelSummary, variable_summaries
+
 ############################
 ######## MARK:FLAGS ########
 ############################
@@ -71,6 +73,8 @@ tf.app.flags.DEFINE_boolean("print_beam", False, "to print beam info")
 tf.app.flags.DEFINE_boolean("no_repeat", False, "no repeat")
 
 
+
+
 FLAGS = tf.app.flags.FLAGS
 
 
@@ -81,11 +85,14 @@ def mylog(msg):
     logging.info(msg)
 
 
-def mylog_start_section(section_name):
+def mylog_section(section_name):
     mylog("======== {} ========".format(section_name)) 
 
-def mylog_end_section(section_name):
+def mylog_subsection(section_name):
     mylog("-------- {} --------".format(section_name)) 
+
+def mylog_line(section_name, message):
+    mylog("[{}] {}".format(section_name, message))
 
 
 def get_device_address(s):
@@ -107,7 +114,7 @@ def show_all_variables():
 
 def log_flags():
     members = FLAGS.__dict__['__flags'].keys()
-    mylog_start_section("FLAGS")
+    mylog_section("FLAGS")
     for attr in members:
         mylog("{}={}".format(attr, getattr(FLAGS, attr)))
 
@@ -146,7 +153,7 @@ def create_model(session, run_options, run_metadata):
 def train():
 
     # Read Data
-    mylog_start_section("READ DATA")
+    mylog_section("READ DATA")
     train_data_bucket, dev_data_bucket, _buckets, vocab_path = read_train_dev(FLAGS.data_cache_dir, FLAGS.train_path, FLAGS.dev_path, FLAGS.vocab_size, FLAGS.L, FLAGS.n_bucket)
     real_vocab_size = get_real_vocab_size(vocab_path)
 
@@ -160,7 +167,7 @@ def train():
     dev_bucket_sizes = [len(dev_data_bucket[b]) for b in xrange(len(_buckets))]
     dev_total_size = int(sum(dev_bucket_sizes))
 
-    mylog_start_section("REPORT")
+    mylog_section("REPORT")
     # steps
     batch_size = FLAGS.batch_size
     n_epoch = FLAGS.n_epoch
@@ -182,7 +189,7 @@ def train():
     mylog("Total_steps:{}".format(total_steps))
     mylog("Steps_per_checkpoint: {}".format(steps_per_checkpoint))
 
-    mylog_start_section("IN TENSORFLOW")
+    mylog_section("IN TENSORFLOW")
     
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)) as sess:
         
@@ -194,26 +201,37 @@ def train():
             run_options = None
             run_metadata = None
 
+        mylog_section("MODEL/SUMMARY/WRITER")
+
         mylog("Creating Model.. (this can take a few minutes)")
         model = create_model(sess, run_options, run_metadata)
+
+        mylog("Creating ModelSummary")
+        modelSummary = ModelSummary()
+
+        mylog("Creating tf.summary.FileWriter")
+        summaryWriter = tf.summary.FileWriter(os.path.join(FLAGS.summary_dir , "train.summary"), sess.graph)
+
+        mylog_section("All Variables")
         show_all_variables()
-    
+
         # Data Iterators
+        mylog_section("Data Iterators")
+
         dite = DataIterator(model, train_data_bucket, len(train_buckets_scale), batch_size, train_buckets_scale)
         
         iteType = 0
         if iteType == 0:
-            mylog("withRandom")
+            mylog("Itetype: withRandom")
             ite = dite.next_random()
         elif iteType == 1:
-            mylog("withSequence")
+            mylog("Itetype: withSequence")
             ite = dite.next_sequence()
         
         # statistics during training
         step_time, loss = 0.0, 0.0
         current_step = 0
         previous_losses = []
-        his = []
         low_ppx = float("inf")
         low_ppx_step = 0
         steps_per_report = 30
@@ -222,7 +240,7 @@ def train():
         n_valid_sents = 0
         patience = FLAGS.patience
         
-        mylog_start_section("TRAIN")
+        mylog_section("TRAIN")
 
         
         while current_step < total_steps:
@@ -246,9 +264,10 @@ def train():
             report_time += (time.time() - start_time)
             n_targets_report += np.sum(weights)
 
-            if current_step % steps_per_report == 0:                
-                mylog("--------------------"+"Report"+str(current_step)+"-------------------")
-                mylog("StepTime: {} Speed: {} targets / sec in total {} targets".format(report_time/steps_per_report, n_targets_report*1.0 / report_time, train_n_tokens))
+            if current_step % steps_per_report == 0:
+                sect_name = "STEP {}".format(current_step)
+                msg = "StepTime: {:.2f} sec Speed: {:.2f} targets/s Total_targets: {}".format(report_time/steps_per_report, n_targets_report*1.0 / report_time, train_n_tokens)
+                mylog_line(sect_name,msg)
 
                 report_time = 0
                 n_targets_report = 0
@@ -262,36 +281,48 @@ def train():
                     exit()
 
 
-
+            
             if current_step % steps_per_checkpoint == 0:
-                mylog("--------------------"+"TRAIN"+str(current_step)+"-------------------")
-                # Print statistics for the previous epoch.
- 
+
+                i_checkpoint = int(current_step / steps_per_checkpoint)
+                
+                # train_ppx
                 loss = loss / n_valid_sents
-                perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
-                mylog("global step %d learning rate %.4f step-time %.2f perplexity " "%.2f" % (model.global_step.eval(), model.learning_rate.eval(), step_time, perplexity))
+                train_ppx = math.exp(float(loss)) if loss < 300 else float("inf")
+                learning_rate = model.learning_rate.eval()
                 
-                train_ppx = perplexity
-                
-                # Save checkpoint and zero timer and loss.
-                step_time, loss, n_valid_sents = 0.0, 0.0, 0
                                 
-                # dev data
-                mylog("--------------------" + "DEV" + str(current_step) + "-------------------")
-                eval_loss, eval_ppx = evaluate(sess, model, dev_data_bucket)
-                mylog("dev: ppx: {}".format(eval_ppx))
+                # dev_ppx
+                dev_loss, dev_ppx = evaluate(sess, model, dev_data_bucket)
 
-                his.append([current_step, train_ppx, eval_ppx])
+                # report
+                sect_name = "CHECKPOINT {} STEP {}".format(i_checkpoint, current_step)
+                msg = "Learning_rate: {:.4f} Dev_ppx: {:.2f} Train_ppx: {:.2f}".format(learning_rate, dev_ppx, train_ppx)
+                mylog_line(sect_name, msg)
 
-                if eval_ppx < low_ppx:
-                    patience = FLAGS.patience
-                    low_ppx = eval_ppx
-                    low_ppx_step = current_step
-                    checkpoint_path = os.path.join(FLAGS.saved_model_dir, "best.ckpt")
-                    mylog("Saving best model....")
+                # save summary
+                _summaries = modelSummary.step_record(sess, train_ppx, dev_ppx)
+                for _summary in _summaries:
+                    summaryWriter.add_summary(_summary, i_checkpoint)
+                
+                # save model per checkpoint
+                if FLAGS.saveCheckpoint:
+                    checkpoint_path = os.path.join(FLAGS.saved_model_dir, "model")
                     s = time.time()
-                    model.saver.save(sess, checkpoint_path, global_step=0, write_meta_graph = False)
-                    mylog("Best model saved using {} sec".format(time.time()-s))
+                    model.saver.save(sess, checkpoint_path, global_step=i_checkpoint, write_meta_graph = False)
+                    msg = "Model saved using {:.2f} sec at {}".format(time.time()-s, checkpoint_path)
+                    mylog_line(sect_name, msg)
+                    
+                # save best model
+                if dev_ppx < low_ppx:
+                    patience = FLAGS.patience
+                    low_ppx = dev_ppx
+                    low_ppx_step = current_step
+                    checkpoint_path = os.path.join(FLAGS.saved_model_dir, "best")
+                    s = time.time()
+                    model.best_saver.save(sess, checkpoint_path, global_step=0, write_meta_graph = False)
+                    msg = "Model saved using {:.2f} sec at {}".format(time.time()-s, checkpoint_path)
+                    mylog_line(sect_name, msg)
                 else:
                     patience -= 1
 
@@ -299,7 +330,9 @@ def train():
                     mylog("Training finished. Running out of patience.")
                     break
 
-                sys.stdout.flush()
+                # Save checkpoint and zero timer and loss.
+                step_time, loss, n_valid_sents = 0.0, 0.0, 0
+                
 
 
 def evaluate(sess, model, data_set):
@@ -330,7 +363,7 @@ def evaluate(sess, model, data_set):
     return loss, ppx
 
 
-def beam_search():
+def beam_decode():
     log_it("Reading Data...")
     test_data_bucket, _buckets = read_test(FLAGS.data_cache_dir, FLAGS.test_path, get_vocab_path(FLAGS.data_cache_dir), FLAGS.L, FLAGS.n_bucket)
     real_vocab_size = get_real_vocab_size(vocab_path)
@@ -448,58 +481,6 @@ def beam_search():
                 print(sentences)
 
 
-def beam_decode():
-    mylog("Reading Data...")
-    test_data_bucket, _buckets = read_test(FLAGS.data_cache_dir, FLAGS.test_path, get_vocab_path(FLAGS.data_cache_dir), FLAGS.L, FLAGS.n_bucket)
-    real_vocab_size = get_real_vocab_size(vocab_path)
-
-    FLAGS._buckets = _buckets
-    FLAGS.real_vocab_size = real_vocab_size
-
-    test_bucket_sizes = [len(test_data_bucket[b]) for b in xrange(len(_buckets))]
-    test_total_size = int(sum(test_bucket_sizes))
-
-    # reports
-    mylog("real_vocab_size: {}".format(_buckets))
-    mylog("_buckets:".format(_buckets))
-    mylog("BEAM_DECODE:")
-    mylog("total: {}".format(test_total_size))
-    mylog("buckets: {}".format(test_bucket_sizes))
-    
-    with tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)) as sess:
-
-        # runtime profile
-        if FLAGS.profile:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-            run_metadata = tf.RunMetadata()
-        else:
-            run_options = None
-            run_metadata = None
-
-        mylog("Creating Model")
-        model = create_model(sess, run_options, run_metadata)
-        show_all_variables()
-        model.init_beam_decoder()
-        
-        sess.run(model.dropoutRate.assign(1.0))
-
-        start_id = 0
-        n_steps = 0
-        batch_size = FLAGS.batch_size
-    
-        dite = DataIterator(model, test_data_bucket, len(_buckets), batch_size, None)
-        ite = dite.next_sequence(stop = True, recommend = True)
-
-        n_recommended = 0
-
-        start = time.time()
-
-        for inputs, positions, valids, bucket_id in ite:
-            print(inputs)
-            print(positions)
-            results = model.beam_step(sess, index=0, user_input = users, item_inputs = inputs, sequence_length = positions, bucket_id = bucket_id)
-            break
-
            
 def force_decode():
     pass
@@ -508,24 +489,25 @@ def force_decode():
 
 def mkdir(path):
     if not os.path.exists(path):
-        mylog("Creating Folder {}".format(path))
         os.mkdir(path)
 
 
 def parsing_flags():
+    # add data_cache and saved_model
+    FLAGS.data_cache_dir = os.path.join(FLAGS.model_dir, "data_cache")
+    FLAGS.saved_model_dir = os.path.join(FLAGS.model_dir, "saved_model")
+    FLAGS.summary_dir = FLAGS.saved_model_dir
+
+    mkdir(FLAGS.model_dir)
+    mkdir(FLAGS.data_cache_dir)
+    mkdir(FLAGS.saved_model_dir)
+    mkdir(FLAGS.summary_dir)
+
     # for logs
     log_path = os.path.join(FLAGS.model_dir,"log.{}.txt".format(FLAGS.mode))
     filemode = 'w' if FLAGS.fromScratch else "a"
     logging.basicConfig(filename=log_path,level=logging.DEBUG, filemode = filemode)
-
-    mylog("Logfile: {}".format(log_path))
     
-    # add data_cache and saved_model
-    FLAGS.data_cache_dir = os.path.join(FLAGS.model_dir, "data_cache")
-    FLAGS.saved_model_dir = os.path.join(FLAGS.model_dir, "saved_model")
-    mkdir(FLAGS.model_dir)
-    mkdir(FLAGS.data_cache_dir)
-    mkdir(FLAGS.saved_model_dir)
     
     log_flags()
 

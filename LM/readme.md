@@ -12,6 +12,7 @@ model_{version}/
 		test.ids
 		vocab
 	saved_model/
+		summary
 	log.train.txt
 	log.beam_decode.txt
 	log.force_decode.txt
@@ -19,3 +20,8 @@ model_{version}/
 
 Preprocessing:
 	
+
+
+
+TODO:
+1. batch normalization
