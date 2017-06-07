@@ -4,6 +4,8 @@ TRAIN_PATH=../data/ptb/train
 DEV_PATH=../data/ptb/valid
 TEST_PATH=../data/ptb/test
 
+source /home/nlg-05/xingshi/sh/init_tensorflow.sh
+
 export CUDA_VISIBLE_DEVICES=1
 
 python $PY --mode TRAIN --model_dir $MODEL_DIR \

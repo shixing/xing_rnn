@@ -71,7 +71,7 @@ class SeqModel(object):
         self.topk_n = topk_n
         self.dtype = dtype
         self.vocab_size = vocab_size
-
+        self.num_layers = num_layers
 
         # some parameters
         with tf.device(devices[0]):
@@ -155,6 +155,39 @@ class SeqModel(object):
 
         self.saver = tf.train.Saver(tf.global_variables())
         self.best_saver = tf.train.Saver(tf.global_variables())
+
+
+    def get_hidden_states(self,bucket_id, max_length, n_layers):
+        states = []
+        def get_name(istep,ilayer,name):
+            d = {"fg":"Sigmoid",'ig':"Sigmoid_1",'og':"Sigmoid_2",'i':"Tanh",'h':"mul_2",'c':"add_1"}
+            step_str = ''
+            if istep > 0:
+                step_str = "_{}".format(istep)
+            bucket_str = ""
+            if bucket_id > 0:
+                bucket_str = "_{}".format(bucket_id)
+            return "model_with_buckets/rnn{}/multi_rnn_cell{}/cell_{}/lstm_cell/{}:0".format(bucket_str, step_str, ilayer,d[name])
+
+        names = ['fg','ig','og','i','h','c']
+        graph = tf.get_default_graph()
+        for i in xrange(max_length):
+            state_step = []
+            for j in xrange(n_layers):
+                state_layer = {}
+                for name in names:
+                    tensor = graph.get_tensor_by_name(get_name(i,j,name))
+                    state_layer[name] = tensor
+                state_step.append(state_layer)
+            states.append(state_step)
+        return states 
+
+
+    def init_dump_states(self):
+        self.states_to_dump = []
+        for i, l in enumerate(self.buckets):
+            states = self.get_hidden_states(i,l,self.num_layers)
+            self.states_to_dump.append(states)
 
 
     def init_beam_decoder(self,beam_size=10, max_steps = 30):
@@ -319,7 +352,7 @@ class SeqModel(object):
 
 
     def step(self,session, inputs, targets, target_weights, 
-        bucket_id, forward_only = False):
+        bucket_id, forward_only = False, dump_lstm = False):
 
         length = self.buckets[bucket_id]
 
@@ -332,13 +365,19 @@ class SeqModel(object):
         # output_feed
         if forward_only:
             output_feed = [self.losses[bucket_id]]
+            if dump_lstm:
+                output_feed.append(self.states_to_dump[bucket_id])
+
         else:
             output_feed = [self.losses[bucket_id]]
             output_feed += [self.updates[bucket_id], self.gradient_norms[bucket_id]]
 
         outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
 
-        return outputs[0] # only return losses
+        if forward_only and dump_lstm:
+            return outputs
+        else:
+            return outputs[0] # only return losses
     
 
     def get_batch(self, data_set, bucket_id, start_id = None):
@@ -387,11 +426,12 @@ class SeqModel(object):
 
 
         return batch_input_ids, batch_output_ids, batch_weights, finished
+
         
     def get_batch_test(self, data_set, bucket_id, start_id = None):
         length = self.buckets[bucket_id]
         
-        word_inputs, positions, valids = [], [], [], []
+        word_inputs, positions, valids = [], [], []
         
         for i in xrange(self.batch_size):
             if start_id == None:

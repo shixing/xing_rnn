@@ -1,50 +1,49 @@
 import os
 import sys
 
-head_hpc1="""
+head="""
 #!/bin/bash
 #PBS -q isi
-#PBS -l walltime=300:00:00
-#PBS -l nodes=1:ppn=16:gpus=2:shared
+#PBS -l walltime=10:00:00
+#PBS -l nodes=1:ppn=16:gpus=1:shared
 
-source $NLGHOME/sh/init_tensorflow.sh
-cd /home/nlg-05/xingshi/lstm/tensorflow/recsys/lstm/
+ROOT_DIR=/home/nlg-05/xingshi/workspace/misc/lstm/tensorflow/xing_rnn/LM/
+PY=$ROOT_DIR/py/run.py
+MODEL_DIR=$ROOT_DIR/model/__id__
+DATA_DIR=$ROOT_DIR/data/__data_dir__/
+TRAIN_PATH=$DATA_DIR/train
+DEV_PATH=$DATA_DIR/valid
+TEST_PATH=$DATA_DIR/test
 
-data_part=/home/nlg-05/xingshi/lstm/tensorflow/recsys/data/data_part
-data_full=/home/nlg-05/xingshi/lstm/tensorflow/recsys/data/data_full
-data_ml=/home/nlg-05/xingshi/lstm/tensorflow/recsys/data/data_ml
-train_dir=/home/nlg-05/xingshi/lstm/tensorflow/recsys/train/
+source /home/nlg-05/xingshi/sh/init_tensorflow.sh
 
-__cmd__
-"""
-
-head_hpc2="""
-#!/bin/bash
-#PBS -l walltime=23:59:59
-#PBS -l nodes=1:ppn=16:gpus=2:shared
-#PBS -M kuanl@usc.edu -p 1023
-
-source /usr/usc/tensorflow/0.9.0/setup.sh
-cd /home/rcf-proj/pn3/kuanl/recsys/lstm/
-
-data_part=/home/rcf-proj/pn3/kuanl/recsys/data/data_part/
-data_full=/home/rcf-proj/pn3/kuanl/recsys/data/data_full/
-data_ml=/home/rcf-proj/pn3/kuanl/recsys/data/data_ml/
-train_dir=/home/rcf-proj/pn3/kuanl/recsys/train/
+GPU_ID=0
+if [ $1 ]
+then
+    GPU_ID=$1;
+fi
+export CUDA_VISIBLE_DEVICES=$GPU_ID
 
 __cmd__
 """
+
+train_cmd = "python $PY --mode TRAIN --train_path $TRAIN_PATH --dev_path $DEV_PATH --model_dir $MODEL_DIR "
+
+dump_cmd = "python $PY --mode DUMP_LSTM --test_path $TEST_PATH --model_dir $MODEL_DIR "
+
+
+
 
 def main(acct=0):
     
-    def data_dir(val):
-        return "", "--data_dir {}".format(val)
-    
-    def train_dir(val):
-        return "", "--train_dir {}".format(val)
+    def name(val):
+        return val, ""
 
+    def model_dir(val):
+        return "", "--model_dir {}".format(val)
+    
     def batch_size(val):
-        return "m{}".format(val), "--batch_size {}".format(val)
+        return "", "--batch_size {}".format(val)
 
     def size(val):
         return "h{}".format(val), "--size {}".format(val)
@@ -58,136 +57,137 @@ def main(acct=0):
     def n_epoch(val):
         return "", "--n_epoch {}".format(val)
 
-    def loss(val):
-        return "{}".format(val), "--loss {}".format(val)
-
-    def ta(val):
-        return "Ta{}".format(val), "--ta {}".format(val)
-
     def num_layers(val):
         return "n{}".format(val), "--num_layers {}".format(val)
     
     def L(val):
-        return "L{}".format(val), "--L {}".format(val)
-
-    def N(val):
-        return "", "--N {}".format(val)
+        return "", "--L {}".format(val)
     
-    def dataset(val):
-        if val == 'xing':
-            return "", "--dataset xing"
-        elif val == "ml":
-            return "Ml", "--dataset ml --after40 False"
-
-    def use_concat(val):
-        if val:
-            name = "Cc"
-        else:
-            name = "Mn"
-        return name, "--use_concat {}".format(val)
-
-    def item_vocab_size(val):
-        if item_vocab_size == 50000:
-            return "", ""
-        else:
-            return "", "--item_vocab_size {}".format(val)
+    def vocab_size(val):
+        return "", "--vocab_size {}".format(val)
+        
+    def n_bucket(val):
+        return '', "--n_bucket {}".format(val)
     
-    def fromScratch(val):
-        if not val:
-            return "","--fromScratch False"
-        else:
-            return "",""
-    
-    # whether or not to use separte embedding for input/output items
-    def use_out_items(val):
-        if val:
-            return "oT", "--use_sep_item True"
-        else:
-            return "", "--use_sep_item False"
 
-    funcs = [data_dir, batch_size, size,       #0
-             dropout, learning_rate, n_epoch,  #3
-             loss, ta, num_layers,       #6
-             L, N, use_concat,                 #9
-             dataset, item_vocab_size, fromScratch, #12
-             use_out_items]
+
+    funcs = [name, n_bucket, batch_size, #0
+             size, dropout, learning_rate, #3
+             n_epoch, num_layers, L, #6
+             vocab_size  ]  #9
     
-    template = ["$data_full", 64, 128, 0.5, 0.5, 150, "ce", 0, 1, 30, "001",False,'xing',50000, False, False]
-    template_ml = ["$data_ml", 64, 128, 0.5, 0.5, 150, "ce", 0, 1, 200, "000",False,'ml',13000, True, False]
+    template = ["ptb", 10, 64, #0
+             300, 0.5, 1.0, #3
+             40, 2, 110, #6
+             10050  ]  #9
+    
     params = []
 
-    # for xing
-    _h = [256]
-    _dropout = [0.4,0.6]
-    _learning_rate = [0.5, 1.0]
-    for lr in _learning_rate:
-        for dr in _dropout:
-            for h in _h:
-                temp = list(template)
-                temp[4] = lr
-                temp[3] = dr
-                temp[2] = h
-                params.append(temp)
     
-    # for ml
-    _h = [128]
-    _dropout = [0.4,0.6,0.8]
-    _learning_rate = [0.5, 1.0]
-    for lr in _learning_rate:
-        for dr in _dropout:
-            for h in _h:
-                temp = list(template_ml)
-                temp[4] = lr
-                temp[3] = dr
-                temp[2] = h
-                params.append(temp)
+    
+    
+    #for ptb
+    _sizes = [300,600,329]
+    _num_layers = [[1,2,3],[1,2,3],[1]]
+    _dropouts = [0.5,1.0]
+    _learning_rates = [0.5,1.0]
+    for i, _size in enumerate(_sizes):
+        ns = _num_layers[i]
+        for _n in ns:
+            for _d in _dropouts: 
+                for _l in _learning_rates:
+                    temp = list(template)
+                    temp[0] = 'ptb'
+                    temp[3] = _size
+                    temp[7] = _n
+                    temp[4] = _d
+                    temp[5] = _l
+                    params.append(temp)
+
+    #for ptbchar
+
+    template = ["ptbchar", 10, 32, #0
+             300, 0.8, 1.0, #3
+             40, 2, 300, #6
+             60  ]  #9
+
+    _learning_rates = [0.5,1.0]
+    _sizes = [300,600,422]
+    _num_layers = [[1,2,3],[1,2,3],[1]]
+    _dropouts = [0.8,1.0]
+    for i, _size in enumerate(_sizes):
+        ns = _num_layers[i]
+        for _n in ns:
+            for _d in _dropouts: 
+                for _l in _learning_rates:
+                    temp = list(template)
+                    temp[0] = 'ptbchar'
+                    temp[3] = _size
+                    temp[7] = _n
+                    temp[4] = _d
+                    temp[5] = _l
+                    params.append(temp)
+                    
+    
+                
 
 
-    def get_name_cmd(para):
+
+
+    def get_name_cmd(paras):
         name = ""
         cmd = []
-        for func, para in zip(funcs,para):
+        for func, para in zip(funcs,paras):
             n, c = func(para)
             name += n
             cmd.append(c)
             
         name = name.replace(".",'')
-        n, c = train_dir("${train_dir}/"+name)
-        cmd.append(c)
         
         cmd = " ".join(cmd)
         return name, cmd
 
-    head = head_hpc1 if acct == 0 else head_hpc2
+    def get_dump_cmd(paras):
+        cmd = []
+        for i in [1,3,7,8]:
+            func = funcs[i]
+            para = paras[i]
+            n, c = func(para)
+            cmd.append(c)
+        
+        cmd = " ".join(cmd)
+        return cmd
+
+
+
     # train
     for para in params:
         name, cmd = get_name_cmd(para)
-        cmd = "python run.py " + cmd
+        dp_cmd = get_dump_cmd(para)
+        cmd = train_cmd + cmd
+        dp_cmd = dump_cmd + dp_cmd
+
+        # for train
         fn = "../jobs/{}.sh".format(name)
         f = open(fn,'w')
         content = head.replace("__cmd__",cmd)
+        content = content.replace("__id__",name)
+        content = content.replace("__data_dir__",para[0])
         f.write(content)
         f.close()
 
-    # decode
-    for para in params:
-        name, cmd = get_name_cmd(para)
-        name = name + ".decode"
-        cmd += " --recommend True"
-        cmd = "python run.py " + cmd
-        fn = "../jobs/{}.sh".format(name)
+        # for dunp
+        fn = "../jobs/dump_{}.sh".format(name)
         f = open(fn,'w')
-        content = head.replace("__cmd__",cmd)
-        content = content.replace("23:59:59", "0:59:59")
+        content = head.replace("__cmd__",dp_cmd)
+        content = content.replace("__id__",name)
+        content = content.replace("__data_dir__",para[0])
         f.write(content)
         f.close()
         
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and int(sys.argv[1]) == 1: # hpc2
-        main(2)
-    else:
-        main()
+    main()
 
     
 
