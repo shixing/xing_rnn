@@ -728,7 +728,7 @@ def main(_):
         train()
 
     if FLAGS.mode == 'FORCE_DECODE':
-        mylog("\nWARNING: The output file and original file may not align one to one, because we remove the lines whose lenght exceeds the maximum length set by -L \n")
+        mylog("\nWARNING: \n 1. The output file and original file may not align one to one, because we remove the lines whose lenght exceeds the maximum length set by -L \n 2. The score is -sum(log(p)) with base e and includes EOS. \n")
         
         FLAGS.batch_size = 1
         FLAGS.score_file = os.path.join(FLAGS.model_dir,FLAGS.force_decode_output)
