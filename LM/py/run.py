@@ -38,6 +38,10 @@ tf.app.flags.DEFINE_string("model_dir", "./model", "model_dir/data_cache/n model
 tf.app.flags.DEFINE_string("train_path", "./train", "the absolute path of raw train file.")
 tf.app.flags.DEFINE_string("dev_path", "./dev", "the absolute path of raw dev file.")
 tf.app.flags.DEFINE_string("test_path", "./test", "the absolute path of raw test file.")
+tf.app.flags.DEFINE_string("force_decode_output", "force_decode.txt", "the file name of the score file as the output of force_decode. The file will be put at model_dir/force_decode_output")
+tf.app.flags.DEFINE_string("dump_lstm_output", "dump_lstm.pb", "the file to save hidden states as a protobuffer as the output of dump_lstm. The file will be put at model_dir/dump_lstm_output")
+
+
 
 # tuning hypers
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
@@ -256,6 +260,7 @@ def train():
         n_targets_report = 0
         report_time = 0
         n_valid_sents = 0
+        n_valid_words = 0
         patience = FLAGS.patience
         
         mylog_section("TRAIN")
@@ -277,6 +282,7 @@ def train():
             loss += L
             current_step += 1
             n_valid_sents += np.sum(np.sign(weights[0]))
+            n_valid_words += np.sum(weights)
 
             # for report
             report_time += (time.time() - start_time)
@@ -289,6 +295,7 @@ def train():
 
                 report_time = 0
                 n_targets_report = 0
+                
 
                 # Create the Timeline object, and write it to a json
                 if FLAGS.profile:
@@ -305,7 +312,7 @@ def train():
                 i_checkpoint = int(current_step / steps_per_checkpoint)
                 
                 # train_ppx
-                loss = loss / n_valid_sents
+                loss = loss / n_valid_words
                 train_ppx = math.exp(float(loss)) if loss < 300 else float("inf")
                 learning_rate = model.learning_rate.eval()
                 
@@ -349,7 +356,7 @@ def train():
                     break
 
                 # Save checkpoint and zero timer and loss.
-                step_time, loss, n_valid_sents = 0.0, 0.0, 0
+                step_time, loss, n_valid_sents, n_valid_words = 0.0, 0.0, 0, 0
                 
 
 
@@ -371,7 +378,7 @@ def evaluate(sess, model, data_set):
         L = model.step(sess, inputs, outputs, weights, bucket_id, forward_only = True)
         loss += L
         n_steps += 1
-        n_valids += np.sum(np.sign(weights[0]))
+        n_valids += np.sum(weights)
 
     loss = loss/(n_valids)
     ppx = math.exp(loss) if loss < 300 else float("inf")
@@ -381,9 +388,11 @@ def evaluate(sess, model, data_set):
     return loss, ppx
 
 
-def beam_decode():
-    mylog("Reading Data...")
-    test_data_bucket, _buckets = read_test(FLAGS.data_cache_dir, FLAGS.test_path, get_vocab_path(FLAGS.data_cache_dir), FLAGS.L, FLAGS.n_bucket)
+def force_decode():
+    # force_decode it: generate a file which contains every score and the final score; 
+    mylog_section("READ DATA")
+
+    test_data_bucket, _buckets, test_data_order = read_test(FLAGS.data_cache_dir, FLAGS.test_path, get_vocab_path(FLAGS.data_cache_dir), FLAGS.L, FLAGS.n_bucket)
     vocab_path = get_vocab_path(FLAGS.data_cache_dir)
     real_vocab_size = get_real_vocab_size(vocab_path)
 
@@ -394,8 +403,93 @@ def beam_decode():
     test_total_size = int(sum(test_bucket_sizes))
 
     # reports
-    mylog("real_vocab_size: {}".format(_buckets))
-    mylog("_buckets:".format(_buckets))
+    mylog_section("REPORT")
+    mylog("real_vocab_size: {}".format(FLAGS.real_vocab_size))
+    mylog("_buckets:{}".format(FLAGS._buckets))
+    mylog("FORCE_DECODE:")
+    mylog("total: {}".format(test_total_size))
+    mylog("bucket_sizes: {}".format(test_bucket_sizes))
+    
+    config = tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)
+    config.gpu_options.allow_growth = FLAGS.allow_growth
+
+    mylog_section("IN TENSORFLOW")
+    with tf.Session(config=config) as sess:
+
+        # runtime profile
+        if FLAGS.profile:
+            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+            run_metadata = tf.RunMetadata()
+        else:
+            run_options = None
+            run_metadata = None
+
+        mylog("Creating Model")
+        model = create_model(sess, run_options, run_metadata)
+                
+        mylog_section("All Variables")
+        show_all_variables()
+ 
+        sess.run(model.dropoutRate.assign(1.0))
+
+        start_id = 0
+        n_steps = 0
+        batch_size = FLAGS.batch_size
+
+        mylog_section("Data Iterators")
+        dite = DataIterator(model, test_data_bucket, len(_buckets), batch_size, None, data_order = test_data_order)
+        ite = dite.next_original()
+            
+        fdump = open(FLAGS.score_file,'w')
+
+        i_sent = 0
+
+        mylog_section("FORCE_DECODING")
+
+        for inputs, outputs, weights, bucket_id in ite:
+            # inputs: [[_GO],[1],[2],[3],[_EOS],[pad_id],[pad_id]]
+            # positions: [4]
+
+            mylog("--- decoding {}/{} sent ---".format(i_sent, test_total_size))
+            i_sent += 1
+            #print(inputs)
+            #print(outputs)
+            #print(weights)
+            #print(bucket_id)
+
+            L = model.step(sess, inputs, outputs, weights, bucket_id, forward_only = True, dump_lstm = False)
+            
+            mylog("LOSS: {}".format(L))
+
+            fdump.write("{}\n".format(L))
+        
+            # do the following convert:
+            # inputs: [[pad_id],[1],[2],[pad_id],[pad_id],[pad_id]]
+            # positions:[2]
+
+        fdump.close()
+            
+
+
+
+def beam_decode():
+    # not yet tested: 
+    # known issues:
+    #   should use next_original
+    mylog("Reading Data...")
+    test_data_bucket, _buckets, test_data_order = read_test(FLAGS.data_cache_dir, FLAGS.test_path, get_vocab_path(FLAGS.data_cache_dir), FLAGS.L, FLAGS.n_bucket)
+    vocab_path = get_vocab_path(FLAGS.data_cache_dir)
+    real_vocab_size = get_real_vocab_size(vocab_path)
+
+    FLAGS._buckets = _buckets
+    FLAGS.real_vocab_size = real_vocab_size
+
+    test_bucket_sizes = [len(test_data_bucket[b]) for b in xrange(len(_buckets))]
+    test_total_size = int(sum(test_bucket_sizes))
+
+    # reports
+    mylog("real_vocab_size: {}".format(FLAGS.real_vocab_size))
+    mylog("_buckets:{}".format(FLAGS._buckets))
     mylog("BEAM_DECODE:")
     mylog("total: {}".format(test_total_size))
     mylog("buckets: {}".format(test_bucket_sizes))
@@ -511,8 +605,8 @@ def beam_decode():
            
 def dump_lstm():
     # dump the hidden states to some where
-    mylog("Reading Data...")
-    test_data_bucket, _buckets = read_test(FLAGS.data_cache_dir, FLAGS.test_path, get_vocab_path(FLAGS.data_cache_dir), FLAGS.L, FLAGS.n_bucket)
+    mylog_section("READ DATA")
+    test_data_bucket, _buckets, test_data_order = read_test(FLAGS.data_cache_dir, FLAGS.test_path, get_vocab_path(FLAGS.data_cache_dir), FLAGS.L, FLAGS.n_bucket)
     vocab_path = get_vocab_path(FLAGS.data_cache_dir)
     real_vocab_size = get_real_vocab_size(vocab_path)
 
@@ -523,9 +617,11 @@ def dump_lstm():
     test_total_size = int(sum(test_bucket_sizes))
 
     # reports
-    mylog("real_vocab_size: {}".format(_buckets))
-    mylog("_buckets:".format(FLAGS._buckets))
-    mylog("BEAM_DECODE:")
+    mylog_section("REPORT")
+
+    mylog("real_vocab_size: {}".format(FLAGS.real_vocab_size))
+    mylog("_buckets:{}".format(FLAGS._buckets))
+    mylog("DUMP_LSTM:")
     mylog("total: {}".format(test_total_size))
     mylog("buckets: {}".format(test_bucket_sizes))
     
@@ -541,6 +637,8 @@ def dump_lstm():
             run_options = None
             run_metadata = None
 
+        mylog_section("MODEL")
+
         mylog("Creating Model")
         model = create_model(sess, run_options, run_metadata)
         
@@ -548,7 +646,7 @@ def dump_lstm():
         model.init_dump_states()
 
         #dump_graph('graph.txt')
-
+        mylog_section("All Variables")
         show_all_variables()
  
         sess.run(model.dropoutRate.assign(1.0))
@@ -557,10 +655,14 @@ def dump_lstm():
         n_steps = 0
         batch_size = FLAGS.batch_size
 
-        dite = DataIterator(model, test_data_bucket, len(_buckets), batch_size, None)
-        ite = dite.next_sequence(stop = True)
+        mylog_section("Data Iterators")
+
+        dite = DataIterator(model, test_data_bucket, len(_buckets), batch_size, None, data_order = test_data_order)
+        ite = dite.next_original()
             
         fdump = open(FLAGS.dump_file,'wb')
+
+        mylog_section("DUMP_LSTM")
 
         i_sent = 0
         for inputs, outputs, weights, bucket_id in ite:
@@ -620,15 +722,25 @@ def parsing_flags():
  
 def main(_):
     
-    
     parsing_flags()
     
     if FLAGS.mode == "TRAIN":
         train()
 
-    if FLAGS.mode == 'DUMP_LSTM':
+    if FLAGS.mode == 'FORCE_DECODE':
+        mylog("\nWARNING: The output file and original file may not align one to one, because we remove the lines whose lenght exceeds the maximum length set by -L \n")
+        
         FLAGS.batch_size = 1
-        FLAGS.dump_file = os.path.join(FLAGS.model_dir,"dump_lstm.pb")
+        FLAGS.score_file = os.path.join(FLAGS.model_dir,FLAGS.force_decode_output)
+        #FLAGS.n_bucket = 1
+        force_decode()
+
+
+    if FLAGS.mode == 'DUMP_LSTM':
+        mylog("\nWARNING: The output file and original file may not align one to one, because we remove the lines whose lenght exceeds the maximum length set by -L \n")
+            
+        FLAGS.batch_size = 1
+        FLAGS.dump_file = os.path.join(FLAGS.model_dir,FLAGS.dump_lstm_output)
         #FLAGS.n_bucket = 1
         dump_lstm()
 

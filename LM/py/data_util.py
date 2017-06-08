@@ -314,8 +314,8 @@ def read_train_dev(cache_dir, train_path, dev_path, vocab_size, max_length, n_bu
     dev_data, dev_length = read_raw_data(dev_ids_path)
     length_array = train_length + dev_length
     _buckets = calculate_buckets(length_array, max_length, n_bucket)
-    train_data_bucket = split_buckets(train_data, _buckets)
-    dev_data_bucket = split_buckets(dev_data, _buckets)
+    train_data_bucket,_ = split_buckets(train_data, _buckets)
+    dev_data_bucket,_ = split_buckets(dev_data, _buckets)
     return train_data_bucket, dev_data_bucket, _buckets, vocab_path
 
 def read_test(cache_dir, test_path, vocab_path, max_length, n_bucket):
@@ -324,6 +324,6 @@ def read_test(cache_dir, test_path, vocab_path, max_length, n_bucket):
     data_to_token_ids(test_path, test_ids_path, vocab_path)
     test_data, test_length = read_raw_data(test_ids_path)
     _buckets = calculate_buckets(test_length, max_length, n_bucket)
-    test_data_bucket = split_buckets(test_data, _buckets)    
-    return test_data_bucket, _buckets
+    test_data_bucket, test_data_order = split_buckets(test_data, _buckets)    
+    return test_data_bucket, _buckets, test_data_order
 

@@ -581,7 +581,7 @@ def sequence_loss_by_example(logits, targets, weights,
 
 
 def sequence_loss(logits, targets, weights,
-                  average_across_timesteps=True, average_across_batch=False,
+                  average_across_timesteps=False, average_across_batch=False,
                   softmax_loss_function=None, name=None):
   """Weighted cross-entropy loss for a sequence of logits, batch-collapsed.
 

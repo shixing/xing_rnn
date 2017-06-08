@@ -71,18 +71,23 @@ def calculate_buckets(length_array, max_length, max_buckets):
     return sorted(buckets)
 
 
-def split_buckets(array,buckets):
+def split_buckets(array,buckets,withOrder = False):
     """
     array : [[items]]
     return:
     d : [[[items]]]
+    order: [(bucket_id, index_in_bucket)]
     """
+    order = []
     d = [[] for i in xrange(len(buckets))]
     for items in array:
         index = get_buckets_id(len(items), buckets)
         if index >= 0:
             d[index].append(items)
-    return d
+            order.append((index, len(d[index])-1))
+    
+    return d, order
+
 
 
 def get_buckets_id(l, buckets):
