@@ -1,0 +1,72 @@
+INFO:root:======== FLAGS ========
+INFO:root:to_vocab_size=100
+INFO:root:learning_rate_decay_factor=0.83
+INFO:root:dump_lstm_output=dump_lstm.pb
+INFO:root:print_beam=True
+INFO:root:dev_path_to=./dev
+INFO:root:keep_prob=0.5
+INFO:root:with_summary=False
+INFO:root:test_path_from=../data/small/test.src
+INFO:root:patience=10
+INFO:root:num_layers=2
+INFO:root:size=20
+INFO:root:train_path_from=./train
+INFO:root:from_vocab_size=100
+INFO:root:model_dir=../model/model_small
+INFO:root:summary_dir=../model/model_small/saved_model
+INFO:root:force_decode_output=force_decode.txt
+INFO:root:profile=False
+INFO:root:saveCheckpoint=False
+INFO:root:fromScratch=True
+INFO:root:learning_rate=0.5
+INFO:root:max_ratio=1.5
+INFO:root:batch_size=64
+INFO:root:N=000
+INFO:root:data_cache_dir=../model/model_small/data_cache
+INFO:root:min_ratio=0.5
+INFO:root:max_gradient_norm=5.0
+INFO:root:saved_model_dir=../model/model_small/saved_model
+INFO:root:test_path_to=./test
+INFO:root:n_bucket=10
+INFO:root:train_path_to=./train
+INFO:root:beam_search=False
+INFO:root:allow_growth=False
+INFO:root:beam_size=4
+INFO:root:mode=BEAM_DECODE
+INFO:root:attention=False
+INFO:root:n_epoch=500
+INFO:root:withAdagrad=True
+INFO:root:dev_path_from=./dev
+INFO:root:Reading Data...
+INFO:root:from_vocab_size: 100
+INFO:root:to_vocab_size: 100
+INFO:root:_beam_buckets: [10, 22]
+INFO:root:BEAM_DECODE:
+INFO:root:total: 100
+INFO:root:buckets: [32, 68]
+INFO:root:Creating Model
+INFO:root:Reading model parameters from ../model/model_small/saved_model/model-15
+INFO:tensorflow:Restoring parameters from ../model/model_small/saved_model/model-15
+INFO:root:Variable:0
+INFO:root:Variable_1:0
+INFO:root:Variable_2:0
+INFO:root:source_input_embedding:0
+INFO:root:input_embedding:0
+INFO:root:output_embedding:0
+INFO:root:output_bias:0
+INFO:root:beam_search/before_c_0:0
+INFO:root:beam_search/before_h_0:0
+INFO:root:beam_search/after_c_0:0
+INFO:root:beam_search/after_h_0:0
+INFO:root:beam_search/before_c_1:0
+INFO:root:beam_search/before_h_1:0
+INFO:root:beam_search/after_c_1:0
+INFO:root:beam_search/after_h_1:0
+INFO:root:basic_seq2seq/encoder/rnn/multi_rnn_cell/cell_0/lstm_cell/kernel:0
+INFO:root:basic_seq2seq/encoder/rnn/multi_rnn_cell/cell_0/lstm_cell/bias:0
+INFO:root:basic_seq2seq/encoder/rnn/multi_rnn_cell/cell_1/lstm_cell/kernel:0
+INFO:root:basic_seq2seq/encoder/rnn/multi_rnn_cell/cell_1/lstm_cell/bias:0
+INFO:root:basic_seq2seq/decoder/rnn/multi_rnn_cell/cell_0/lstm_cell/kernel:0
+INFO:root:basic_seq2seq/decoder/rnn/multi_rnn_cell/cell_0/lstm_cell/bias:0
+INFO:root:basic_seq2seq/decoder/rnn/multi_rnn_cell/cell_1/lstm_cell/kernel:0
+INFO:root:basic_seq2seq/decoder/rnn/multi_rnn_cell/cell_1/lstm_cell/bias:0
