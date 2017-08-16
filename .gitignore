@@ -4,4 +4,5 @@
 .[#]*
 *[#]
 *pyc
-LM/model/*
+LM/model/
+Seq2Seq/model/
