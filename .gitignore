@@ -6,3 +6,6 @@
 *pyc
 LM/model/
 Seq2Seq/model/
+Seq2Thinker2Seq/model/
+jobs/
+data/

@@ -68,6 +68,10 @@ tf.app.flags.DEFINE_integer("size", 128, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("n_epoch", 500,
                             "Maximum number of epochs in training.")
+tf.app.flags.DEFINE_integer("thinker_steps", 5,
+                            "thinker steps ")
+
+
 
 # replaced by the bucket size
 
@@ -75,6 +79,7 @@ tf.app.flags.DEFINE_integer("max_target_length", 30,"max length")
 tf.app.flags.DEFINE_integer("min_target_length", 0,"max length")
 tf.app.flags.DEFINE_integer("max_source_length", 30,"max length")
 tf.app.flags.DEFINE_integer("min_source_length", 0,"max length")
+
 tf.app.flags.DEFINE_integer("n_bucket", 10,
                             "num of buckets to run.")
 tf.app.flags.DEFINE_integer("patience", 10,"exit if the model can't improve for $patence evals")
@@ -91,12 +96,11 @@ tf.app.flags.DEFINE_boolean("saveCheckpoint", False,
                             "save Model at each checkpoint.")
 tf.app.flags.DEFINE_boolean("profile", False, "False = no profile, True = profile")
 
-# for beam_decoder
+# for beam_decode
 tf.app.flags.DEFINE_integer("beam_size", 10,"the beam size")
 tf.app.flags.DEFINE_boolean("print_beam", False, "to print beam info")
 tf.app.flags.DEFINE_float("min_ratio", 0.5, "min_ratio.")
 tf.app.flags.DEFINE_float("max_ratio", 1.5, "max_ratio.")
-
 
 # GPU configuration
 tf.app.flags.DEFINE_boolean("allow_growth", False, "allow growth")
@@ -115,7 +119,6 @@ FLAGS = tf.app.flags.FLAGS
 # See seq2seq_model.Seq2SeqModel for details of how they work.
 #_buckets = [(5, 10), (10, 15), (20, 25), (40, 50)]
 
-
 def get_buckets(mins,maxs,mint,maxt,n):
     step_source = int((maxs-mins)/n)
     step_target = int((maxt-mint)/n)
@@ -133,6 +136,7 @@ _buckets = get_buckets(FLAGS.min_source_length, FLAGS.max_source_length, FLAGS.m
 _beam_buckets = [x[0] for x in _buckets]
 
 print(_buckets, _beam_buckets)
+
 
 
 def read_data(source_path, target_path, max_size=None):
@@ -266,7 +270,8 @@ def create_model(session, run_options, run_metadata):
                      run_metadata = run_metadata,
                      with_attention = FLAGS.attention,
                      beam_search = FLAGS.beam_search,
-                     beam_buckets = _beam_buckets
+                     beam_buckets = _beam_buckets,
+                     thinker_steps = FLAGS.thinker_steps                    
                      )
 
     ckpt = tf.train.get_checkpoint_state(FLAGS.saved_model_dir)

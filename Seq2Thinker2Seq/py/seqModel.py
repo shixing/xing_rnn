@@ -44,7 +44,8 @@ class SeqModel(object):
                  dtype=tf.float32,
                  with_attention = False,
                  beam_search = False,
-                 beam_buckets = None
+                 beam_buckets = None,
+                 thinker_steps = 5
                  ):
         """Create the model.
         
@@ -113,7 +114,14 @@ class SeqModel(object):
                 self.sources.append(source_input_plhd)
                 self.sources_embed.append(source_input_embed)
 
-            
+            # for thinker
+            self.thinker_embed = []
+            self.thinker_embedding = tf.get_variable('thinker_embedding',[from_vocab_size,self.size], dtype = dtype)
+            for i in xrange(thinker_steps):
+                thinker_input_embed = tf.nn.embedding_lookup(self.thinker_embedding,[i]*self.batch_size)
+                self.thinker_embed.append(thinker_input_embed)
+                
+                
             # for decoder
             self.inputs = []
             self.inputs_embed = []
@@ -130,6 +138,12 @@ class SeqModel(object):
             cell = tf.contrib.rnn.LSTMCell(size, state_is_tuple=True)
             cell = tf.contrib.rnn.DropoutWrapper(cell,input_keep_prob = self.dropoutRate)
             return cell
+
+        def lstm_cell_nodropout():
+            cell = tf.contrib.rnn.LSTMCell(size, state_is_tuple=True)
+            return cell
+
+
             
         # LSTM 
         with tf.device(devices[1]):
@@ -139,6 +153,23 @@ class SeqModel(object):
             else:
                 encoder_cell = tf.contrib.rnn.MultiRNNCell([lstm_cell() for _ in xrange(num_layers)], state_is_tuple=True)
             encoder_cell = tf.contrib.rnn.DropoutWrapper(encoder_cell, output_keep_prob = self.dropoutRate)
+
+            # for thinker
+            # with dropout in thinker
+
+            # if num_layers == 1:
+            #     thinker_cell = lstm_cell()
+            # else:
+            #     thinker_cell = tf.contrib.rnn.MultiRNNCell([lstm_cell() for _ in xrange(num_layers)], state_is_tuple=True)
+            # thinker_cell = tf.contrib.rnn.DropoutWrapper(thinker_cell, output_keep_prob = self.dropoutRate)
+
+            # no dropout in thinker
+            if num_layers == 1:
+                thinker_cell = lstm_cell_nodropout()
+            else:
+                thinker_cell = tf.contrib.rnn.MultiRNNCell([lstm_cell_nodropout() for _ in xrange(num_layers)], state_is_tuple=True)
+
+            
 
             # for decoder
             if num_layers == 1:
@@ -150,6 +181,7 @@ class SeqModel(object):
 
         self.encoder_cell = encoder_cell   
         self.decoder_cell = decoder_cell
+        self.thinker_cell = thinker_cell
         
         # Output Layer
         with tf.device(devices[2]):
@@ -174,7 +206,7 @@ class SeqModel(object):
 
         if not beam_search:
             # Model with buckets            
-            self.model_with_buckets(self.sources_embed, self.inputs_embed, self.targets, self.target_weights, self.buckets, encoder_cell,decoder_cell, dtype, devices = devices, attention = with_attention)
+            self.model_with_buckets(self.sources_embed, self.thinker_embed, self.inputs_embed, self.targets, self.target_weights, self.buckets, encoder_cell, thinker_cell, decoder_cell, dtype, devices = devices, attention = with_attention)
 
             # train
             with tf.device(devices[0]):
@@ -315,8 +347,8 @@ class SeqModel(object):
 
 
     
-    def model_with_buckets(self, sources, inputs, targets, weights,
-                           buckets, encoder_cell, decoder_cell, dtype,
+    def model_with_buckets(self, sources, thinkers, inputs, targets, weights,
+                           buckets, encoder_cell, thinker_cell, decoder_cell, dtype,
                            per_example_loss=False, name=None, devices = None, attention = False):
 
         losses = []
@@ -341,7 +373,7 @@ class SeqModel(object):
         for j, (source_length, target_length) in enumerate(buckets):
             with variable_scope.variable_scope(variable_scope.get_variable_scope(),reuse=True if j > 0 else None):
 
-                _hts, decoder_state = seq2seq_f(encoder_cell, decoder_cell, sources[:source_length], inputs[:target_length], dtype, devices)
+                _hts, decoder_state = seq2seq_f(encoder_cell, thinker_cell, decoder_cell, sources[:source_length], thinkers, inputs[:target_length], dtype, devices)
 
                 hts.append(_hts)
 
@@ -375,7 +407,7 @@ class SeqModel(object):
         self.topk_values = topk_values
         self.topk_indexes = topk_indexes
 
-    def basic_seq2seq(self, encoder_cell, decoder_cell, encoder_inputs, decoder_inputs, dtype, devices = None):
+    def basic_seq2seq(self, encoder_cell, thinker_cell, decoder_cell, encoder_inputs, thinker_inputs, decoder_inputs, dtype, devices = None):
     
         # initial state
         with tf.variable_scope("basic_seq2seq"):
@@ -385,9 +417,11 @@ class SeqModel(object):
                 with tf.variable_scope("encoder"):
                     encoder_outputs, encoder_state  = tf.contrib.rnn.static_rnn(encoder_cell,encoder_inputs,initial_state = init_state)
 
+                with tf.variable_scope("thinker"):
+                    thinker_outputs, thinker_state  = tf.contrib.rnn.static_rnn(thinker_cell,thinker_inputs, initial_state = encoder_state)
 
                 with tf.variable_scope("decoder"):
-                    decoder_outputs, decoder_state = tf.contrib.rnn.static_rnn(decoder_cell,decoder_inputs, initial_state = encoder_state)
+                    decoder_outputs, decoder_state = tf.contrib.rnn.static_rnn(decoder_cell,decoder_inputs, initial_state = thinker_state)
 
         return decoder_outputs, decoder_state
 
@@ -969,6 +1003,7 @@ def sequence_loss(logits, targets, weights,
         return cost / math_ops.cast(total_size, cost.dtype)
     else:
       return cost
+
 
     
     
