@@ -1,7 +1,8 @@
 Data Format:
 
-#File Structure
+# File Structure
 
+```
 raw_data/
 	train
 	dev
@@ -18,12 +19,18 @@ model_{version}/
 	log.train.txt
 	log.beam_decode.txt
 	log.force_decode.txt
-		
+```
 
-#Preprocessing:
+# Bucket sizes
+
+`max_source_length` = max source length
+
+`max_target_length` = max target length + 1 (due to _GO and _EOS)
+
 	
 
-#Using Tensorboard:
+# Using Tensorboard:
+
 ```bash
 # on HPC
 $ source init_tensorflow.sh
@@ -38,5 +45,5 @@ Then open browser: localhost:6006
 
 
 
-TODO:
+# TODO:
 1. batch normalization

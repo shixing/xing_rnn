@@ -581,7 +581,8 @@ class SeqModel(object):
                 
             # after2before_ops
             self.after2before_ops = self.after2before(self.beam_parent)
-            self.hatt_after2before_ops = self.hatt_after2before(self.beam_parent)
+            if self.with_attention:
+                self.hatt_after2before_ops = self.hatt_after2before(self.beam_parent)
 
             # encoder and one-step decoder
             self.beam_with_buckets(self.sources_embed, self.inputs_embed, self.beam_buckets, self.encoder_cell, self.decoder_cell, self.dtype, self.devices, self.with_attention)

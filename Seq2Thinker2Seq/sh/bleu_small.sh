@@ -1,5 +1,5 @@
 PY=../py/run.py
-BLEU=../py/multi-bleu.perl
+BLEU=../py/util/multi-bleu.perl
 MODEL_DIR=../model/model_small
 TRAIN_PATH_FROM=../data/small/train.src
 DEV_PATH_FROM=../data/small/valid.src

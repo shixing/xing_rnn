@@ -96,6 +96,7 @@ tf.app.flags.DEFINE_integer("beam_size", 10,"the beam size")
 tf.app.flags.DEFINE_boolean("print_beam", False, "to print beam info")
 tf.app.flags.DEFINE_float("min_ratio", 0.5, "min_ratio.")
 tf.app.flags.DEFINE_float("max_ratio", 1.5, "max_ratio.")
+tf.app.flags.DEFINE_boolean("load_from_best", True, "load best model to decode")
 
 
 # GPU configuration
@@ -164,7 +165,7 @@ def read_data(source_path, target_path, max_size=None):
         target_ids = [int(x) for x in target.split()]
         target_ids.append(data_utils.EOS_ID)
         for bucket_id, (source_size, target_size) in enumerate(_buckets):
-          if len(source_ids) <= source_size and len(target_ids)-1 <= target_size:
+          if len(source_ids) <= source_size and len(target_ids) <= target_size:
             data_set[bucket_id].append([source_ids, target_ids])
             break
         source, target = source_file.readline(), target_file.readline()
@@ -274,9 +275,17 @@ def create_model(session, run_options, run_metadata):
 
     if FLAGS.mode == "DUMP_LSTM" or FLAGS.mode == "BEAM_DECODE" or FLAGS.mode == 'FORCE_DECODE' or (not FLAGS.fromScratch) and ckpt:
 
-        mylog("Reading model parameters from %s" % ckpt.model_checkpoint_path)
-        model.saver.restore(session, ckpt.model_checkpoint_path)
-        session.run(tf.variables_initializer(model.beam_search_vars))
+        if FLAGS.load_from_best:
+            best_model_path = os.path.join(os.path.dirname(ckpt.model_checkpoint_path),"best-0")
+            mylog("Reading model parameters from %s" % best_model_path)
+            model.saver.restore(session, best_model_path)
+        else:
+            mylog("Reading model parameters from %s" % ckpt.model_checkpoint_path)
+            model.saver.restore(session, ckpt.model_checkpoint_path)
+            
+        if FLAGS.mode == 'BEAM_DECODE':
+            session.run(tf.variables_initializer(model.beam_search_vars))
+            
     else:
         mylog("Created model with fresh parameters.")
         session.run(tf.global_variables_initializer())

@@ -15,5 +15,6 @@ python $PY --mode TRAIN --model_dir $MODEL_DIR \
     --train_path_from $TRAIN_PATH_FROM --dev_path_from $DEV_PATH_FROM \
     --train_path_to $TRAIN_PATH_TO --dev_path_to $DEV_PATH_TO \
     --batch_size 4 --from_vocab_size 100 --to_vocab_size 100 --size 100 --num_layers 2 \
-    --n_epoch 100 --saveCheckpoint True --attention True --learning_rate 0.01 --keep_prob 0.7 --L 22 --n_bucket 2 --optimizer adagrad
+    --min_source_length 0 --max_source_length 22 --min_target_length 0 --max_target_length 22 --n_bucket 2\
+    --n_epoch 100 --saveCheckpoint True --attention True --learning_rate 0.1 --keep_prob 0.7  --optimizer adagrad
     

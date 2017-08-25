@@ -280,7 +280,7 @@ class SeqModel(object):
             else:
                 target_input_seq = [self.GO_ID] + target_seq[:-1]
                 target_output_seq = target_seq
-                
+
                 
             target_weight = [1.0] * len(target_output_seq) + [0.0] * (target_length - len(target_output_seq))
             target_input_seq = target_input_seq + [self.PAD_ID] * (target_length - len(target_input_seq))
@@ -300,7 +300,7 @@ class SeqModel(object):
                     temp.append(l[j][i])
                 output.append(temp)
             return output
-            
+
         batch_source_input_ids = batch_major(source_input_ids)
         batch_target_input_ids = batch_major(target_input_ids)
         batch_target_output_ids = batch_major(target_output_ids)
@@ -547,7 +547,9 @@ class SeqModel(object):
                 
             # after2before_ops
             self.after2before_ops = self.after2before(self.beam_parent)
-            self.hatt_after2before_ops = self.hatt_after2before(self.beam_parent)
+
+            if self.with_attention:
+                self.hatt_after2before_ops = self.hatt_after2before(self.beam_parent)
 
             # encoder and one-step decoder
             self.beam_with_buckets(self.sources_embed, self.inputs_embed, self.beam_buckets, self.encoder_cell, self.decoder_cell, self.dtype, self.devices, self.with_attention)

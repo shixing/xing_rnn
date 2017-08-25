@@ -7,5 +7,9 @@
 LM/model/
 Seq2Seq/model/
 Seq2Thinker2Seq/model/
+
+Seq2Seq/data/*
+!Seq2Seq/data/small
+Seq2Thinker2Seq/data/
+
 jobs/
-data/
