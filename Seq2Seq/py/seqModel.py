@@ -22,6 +22,24 @@ import data_iterator
 
 # import env
 
+class DeviceCellWrapper(tf.nn.rnn_cell.RNNCell):
+  def __init__(self, cell, device):
+    self._cell = cell
+    self._device = device
+
+  @property
+  def state_size(self):
+    return self._cell.state_size
+
+  @property
+  def output_size(self):
+    return self._cell.output_size
+
+  def __call__(self, inputs, state, scope=None):
+    with tf.device(self._device):
+        return self._cell(inputs, state, scope)
+
+
 class SeqModel(object):
     
     def __init__(self,
@@ -126,33 +144,32 @@ class SeqModel(object):
                 self.inputs.append(input_plhd)
                 self.inputs_embed.append(input_embed)
 
-        def lstm_cell():
+
+
+                
+        def lstm_cell(device,input_keep_prob = 1.0, output_keep_prob = 1.0):
             cell = tf.contrib.rnn.LSTMCell(size, state_is_tuple=True)
-            cell = tf.contrib.rnn.DropoutWrapper(cell,input_keep_prob = self.dropoutRate)
+            cell = tf.contrib.rnn.DropoutWrapper(cell,input_keep_prob = input_keep_prob, output_keep_prob = output_keep_prob)
+            cell = DeviceCellWrapper(cell, device)
             return cell
+
+        # LSTM
+        encoder_cells = []
+        decoder_cells = []
+        for i in xrange(num_layers):
+            input_keep_prob = self.dropoutRate
+            output_keep_prob = 1.0
+            if i == num_layers - 1:
+                output_keep_prob = self.dropoutRate
+            device = devices[i+1]
+            encoder_cells.append(lstm_cell(device,input_keep_prob, output_keep_prob))
+            decoder_cells.append(lstm_cell(device,input_keep_prob, output_keep_prob))
             
-        # LSTM 
-        with tf.device(devices[1]):
-            # for encoder
-            if num_layers == 1:
-                encoder_cell = lstm_cell()
-            else:
-                encoder_cell = tf.contrib.rnn.MultiRNNCell([lstm_cell() for _ in xrange(num_layers)], state_is_tuple=True)
-            encoder_cell = tf.contrib.rnn.DropoutWrapper(encoder_cell, output_keep_prob = self.dropoutRate)
-
-            # for decoder
-            if num_layers == 1:
-                decoder_cell = lstm_cell()
-            else:
-                decoder_cell = tf.contrib.rnn.MultiRNNCell([lstm_cell() for _ in xrange(num_layers)], state_is_tuple=True)
-            decoder_cell = tf.contrib.rnn.DropoutWrapper(decoder_cell, output_keep_prob = self.dropoutRate)
-
-
-        self.encoder_cell = encoder_cell   
-        self.decoder_cell = decoder_cell
-        
+        self.encoder_cell = tf.contrib.rnn.MultiRNNCell(encoder_cells, state_is_tuple=True)
+        self.decoder_cell = tf.contrib.rnn.MultiRNNCell(decoder_cells, state_is_tuple=True)
+                
         # Output Layer
-        with tf.device(devices[2]):
+        with tf.device(devices[-1]):
             self.targets = []
             self.target_weights = []
             
@@ -174,33 +191,30 @@ class SeqModel(object):
 
         if not beam_search:
             # Model with buckets            
-            self.model_with_buckets(self.sources_embed, self.inputs_embed, self.targets, self.target_weights, self.buckets, encoder_cell,decoder_cell, dtype, devices = devices, attention = with_attention)
+            self.model_with_buckets(self.sources_embed, self.inputs_embed, self.targets, self.target_weights, self.buckets, self.encoder_cell, self.decoder_cell, dtype, devices = devices, attention = with_attention)
 
             # train
-            with tf.device(devices[0]):
-                params = tf.trainable_variables()
-                if not forward_only:
-                    self.gradient_norms = []
-                    self.updates = []
+            params = tf.trainable_variables()
+            if not forward_only:
+                self.gradient_norms = []
+                self.updates = []
                     
-                    if optimizer == "adagrad":
-                        opt = tf.train.AdagradOptimizer(self.learning_rate)
-                    elif optimizer == 'adam':
-                        opt = tf.train.AdamOptimizer(self.learning_rate)
-                    else:
-                        opt = tf.train.GradientDescentOptimizer(learning_rate = self.learning_rate)
-
-                    for b in xrange(len(buckets)):
-                        gradients = tf.gradients(self.losses[b], params, colocate_gradients_with_ops=True)
-                        clipped_gradients, norm = tf.clip_by_global_norm(gradients, max_gradient_norm)
-                        self.gradient_norms.append(norm)
-                        self.updates.append(opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step))
-
+                if optimizer == "adagrad":
+                    opt = tf.train.AdagradOptimizer(self.learning_rate)
+                elif optimizer == 'adam':
+                    opt = tf.train.AdamOptimizer(self.learning_rate)
+                else:
+                    opt = tf.train.GradientDescentOptimizer(learning_rate = self.learning_rate)
+                    
+                for b in xrange(len(buckets)):
+                    gradients = tf.gradients(self.losses[b], params, colocate_gradients_with_ops=True)
+                    clipped_gradients, norm = tf.clip_by_global_norm(gradients, max_gradient_norm)
+                    self.gradient_norms.append(norm)
+                    self.updates.append(opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step))
 
         else: # for beam search
 
             self.init_beam_decoder(beam_buckets)
-            
 
         all_vars = tf.global_variables()
         self.train_vars = []
@@ -333,20 +347,20 @@ class SeqModel(object):
             seq2seq_f = self.basic_seq2seq
  
         # softmax
-        with tf.device(devices[2]):
-            softmax_loss_function = lambda x,y: tf.nn.sparse_softmax_cross_entropy_with_logits(logits=x, labels= y)
+        softmax_loss_function = lambda x,y: tf.nn.sparse_softmax_cross_entropy_with_logits(logits=x, labels= y)
 
 
 
         for j, (source_length, target_length) in enumerate(buckets):
             with variable_scope.variable_scope(variable_scope.get_variable_scope(),reuse=True if j > 0 else None):
 
+                
                 _hts, decoder_state = seq2seq_f(encoder_cell, decoder_cell, sources[:source_length], inputs[:target_length], dtype, devices)
 
                 hts.append(_hts)
 
                 # logits / loss / topk_values + topk_indexes
-                with tf.device(devices[2]):
+                with tf.device(devices[-1]):
                     _logits = [ tf.add(tf.matmul(ht, tf.transpose(self.output_embedding)), self.output_bias) for ht in _hts]
                     logits.append(_logits)
 
@@ -379,15 +393,14 @@ class SeqModel(object):
     
         # initial state
         with tf.variable_scope("basic_seq2seq"):
-            with tf.device(devices[1]):
-                init_state = encoder_cell.zero_state(self.batch_size, dtype)
 
-                with tf.variable_scope("encoder"):
-                    encoder_outputs, encoder_state  = tf.contrib.rnn.static_rnn(encoder_cell,encoder_inputs,initial_state = init_state)
+            init_state = encoder_cell.zero_state(self.batch_size, dtype)
 
+            with tf.variable_scope("encoder"):
+                encoder_outputs, encoder_state  = tf.contrib.rnn.static_rnn(encoder_cell,encoder_inputs,initial_state = init_state)
 
-                with tf.variable_scope("decoder"):
-                    decoder_outputs, decoder_state = tf.contrib.rnn.static_rnn(decoder_cell,decoder_inputs, initial_state = encoder_state)
+            with tf.variable_scope("decoder"):
+                decoder_outputs, decoder_state = tf.contrib.rnn.static_rnn(decoder_cell,decoder_inputs, initial_state = encoder_state)
 
         return decoder_outputs, decoder_state
 
@@ -402,7 +415,7 @@ class SeqModel(object):
 
 
         with tf.variable_scope("attention_seq2seq"):
-            with tf.device(devices[1]):
+            with tf.device(devices[-2]):
                 init_state = encoder_cell.zero_state(self.batch_size, dtype)
 
                 # parameters
@@ -422,68 +435,68 @@ class SeqModel(object):
                 
                 source_length = len(encoder_inputs)
                 
-                with tf.variable_scope("encoder"):
+            with tf.variable_scope("encoder"):
 
-                    # encoder lstm
-                    encoder_outputs, encoder_state  = tf.contrib.rnn.static_rnn(encoder_cell,encoder_inputs,initial_state = init_state)
-
-
-                    # combine all source hts to top_states [batch_size, source_length, hidden_size]
-                    top_states = [tf.reshape(h,[-1,1,self.size]) for h in encoder_outputs]
-                    top_states = tf.concat(top_states,1)
-                    
-                    # calculate a_w_source * h_source
-                    
-                    top_states_4 = tf.reshape(top_states,[-1,source_length,1,self.size])
-                    a_w_source_4 = tf.reshape(self.a_w_source,[1,1,self.size,self.size])
-                    top_states_transform_4 = tf.nn.conv2d(top_states_4, a_w_source_4, [1,1,1,1], 'SAME') #[batch_size, source_length, 1, hidden_size]
+                # encoder lstm
+                encoder_outputs, encoder_state  = tf.contrib.rnn.static_rnn(encoder_cell,encoder_inputs,initial_state = init_state)
+                
+                # combine all source hts to top_states [batch_size, source_length, hidden_size]
+                top_states = [tf.reshape(h,[-1,1,self.size]) for h in encoder_outputs]
+                top_states = tf.concat(top_states,1)
+                
+                # calculate a_w_source * h_source
+                
+                top_states_4 = tf.reshape(top_states,[-1,source_length,1,self.size])
+                a_w_source_4 = tf.reshape(self.a_w_source,[1,1,self.size,self.size])
+                top_states_transform_4 = tf.nn.conv2d(top_states_4, a_w_source_4, [1,1,1,1], 'SAME') #[batch_size, source_length, 1, hidden_size]
                     
 
                 
-                def get_context(query):
-                    # query : [batch_size, hidden_size]
-                    # return h_t_att : [batch_size, hidden_size]
+            def get_context(query):
+                # query : [batch_size, hidden_size]
+                # return h_t_att : [batch_size, hidden_size]
 
-                    # a_w_target * h_target
-                    query_transform_2 = tf.add(tf.matmul(query, self.a_w_target), self.a_b)
-                    query_transform_4 = tf.reshape(query_transform_2, [-1,1,1,self.size]) #[batch_size,1,1,hidden_size]
-                    
-                    #a = softmax( a_v * tanh(...))
-                    s = tf.reduce_sum(self.a_v * tf.tanh(top_states_transform_4 + query_transform_4),[2,3]) #[batch_size, source_length]
-                    a = tf.nn.softmax(s) 
+                # a_w_target * h_target
+                query_transform_2 = tf.add(tf.matmul(query, self.a_w_target), self.a_b)
+                query_transform_4 = tf.reshape(query_transform_2, [-1,1,1,self.size]) #[batch_size,1,1,hidden_size]
 
-                    # context = a * h_source
-                    context = tf.reduce_sum(tf.reshape(a, [-1, source_length,1,1]) * top_states_4, [1,2])
-                    
-                    return context
+                #a = softmax( a_v * tanh(...))
+                s = tf.reduce_sum(self.a_v * tf.tanh(top_states_transform_4 + query_transform_4),[2,3]) #[batch_size, source_length]
+                a = tf.nn.softmax(s) 
+
+                # context = a * h_source
+                context = tf.reduce_sum(tf.reshape(a, [-1, source_length,1,1]) * top_states_4, [1,2])
+
+                return context
 
                 
-                with tf.variable_scope("decoder"):
+            with tf.variable_scope("decoder"):
                     
-                    state = encoder_state 
-                    ht = encoder_outputs[-1]
-                    
-                    prev_h_att = tf.zeros_like(ht)
-                    
-                    outputs = []
+                state = encoder_state 
+                ht = encoder_outputs[-1]
 
-                    for i in xrange(len(decoder_inputs)):
-                        decoder_input = decoder_inputs[i]
+                prev_h_att = tf.zeros_like(ht)
 
-                        # x = fi_w_x * decoder_input + fi_w_att * prev_h_target_attent) + fi_b
-                        x = tf.add(tf.add(tf.matmul(decoder_input, self.fi_w_x),tf.matmul(prev_h_att, self.fi_w_att)), self.fi_b)
-                        
-                        # decoder lstm
-                        decoder_output, state = decoder_cell(x, state)
-                        
+                outputs = []
+
+                for i in xrange(len(decoder_inputs)):
+                    decoder_input = decoder_inputs[i]
+
+                    # x = fi_w_x * decoder_input + fi_w_att * prev_h_target_attent) + fi_b
+                    x = tf.add(tf.add(tf.matmul(decoder_input, self.fi_w_x),tf.matmul(prev_h_att, self.fi_w_att)), self.fi_b)
+
+                    # decoder lstm
+                    decoder_output, state = decoder_cell(x, state)
+
+                    with tf.device(devices[-2]):
+                    
                         context = get_context(decoder_output) 
-                        
                         #h_target_attent = tanh(h_w_context * context + h_w_target * h_target + h_b)
                         h_att = tf.tanh(tf.add(tf.add(tf.matmul(decoder_output, self.h_w_target), tf.matmul(context,self.h_w_context)),self.h_b))
-                        
-                        prev_h_att = h_att
 
-                        outputs.append(h_att)
+                    prev_h_att = h_att
+
+                    outputs.append(h_att)
                     
                 return outputs, state
                         

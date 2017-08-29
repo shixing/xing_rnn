@@ -47,3 +47,41 @@ Then open browser: localhost:6006
 
 # TODO:
 1. batch normalization
+
+# Speed Test
+
+## Small Settings
+
+Att V 40k 40k H 200  L 50  bucket 1 m 64  N 001 S : 1500/s GRAM: 612 2150
+
+Att V 40k 40k H 200  L 50  bucket 1 m 128  N 001 S : 2500/s GRAM: 1124 4198
+
+Att V 40k 40k H 400  L 50  bucket 1 m 32  N 001 S : 730/s GRAM: 2148 4198
+
+Att V 40k 40k H 200  L 50  bucket 2 m 32  N 001 S : 1350/s GRAM: 612 2150
+
+Att V 40k 40k H 200  L 50  bucket 4 m 32  N 001 S : 1750/s GRAM: 612 2150
+
+Att V 40k 40k H 200  L 50  bucket 8 m 32  N 001 S : 1900/s GRAM: 612 2150
+
+Att V 40k 40k H 200  L 100  bucket 1 m 32  N 001 S : 520/s GRAM: 1124 4198
+
+Att V 10k 40k H 200  L 50  bucket 1 m 32  N 001 S : 900/s GRAM: 612 2150
+
+Att V 40k 50k H 200  L 50  bucket 1 m 32  N 001 S : 800/s GRAM: 612 4198
+
+SGD Att V 40k 40k H 200  L 50  bucket 1 m 32  N 001 S : 900/s GRAM: 614 2150
+
+Att V 40k 40k H 200  L 50  bucket 1 m 32  N 001 S : 900/s GRAM: 612 2150
+
+Att V 40k 40k H 200  L 50  bucket 1 m 32  N 000 S : 730/s GRAM: 2150 62
+
+Non-Att V 40k 40k H 200  L 50  bucket 1 m 32  N 001 S : 1000/s GRAM: 356 2150
+
+Non-Att V 40k 40k H 200  L 50  bucket 1 m 32  N 000 S : 930/s GRAM: 2150 62
+
+## Large Settings
+
+Att V 200k 40k H 1000  L 50  bucket 5 m 128  N 01223 S : 2280/s  GRAM: 1124 4198 8294 10907
+
+Att V 200k 40k H 1000  L 50  bucket 5 m 128  N 00001 S : 2100/s  GRAM: 8294 10907 62 62

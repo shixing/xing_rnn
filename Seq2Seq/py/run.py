@@ -80,7 +80,7 @@ tf.app.flags.DEFINE_integer("n_bucket", 10,
 tf.app.flags.DEFINE_integer("patience", 10,"exit if the model can't improve for $patence evals")
 
 # devices
-tf.app.flags.DEFINE_string("N", "000", "GPU layer distribution: [input_embedding, lstm, output_embedding]")
+tf.app.flags.DEFINE_string("N", "00000", "GPU layer distribution: [input_embedding, layer1, layer2, attention_layer, softmax]. Generally, it's better to put top layer and attention_layer at the same GPU and put softmax in a seperate GPU ")
 
 # training parameter
 tf.app.flags.DEFINE_string("optimizer", "adam",
@@ -337,8 +337,8 @@ def train():
     total_steps = steps_per_epoch * n_epoch
 
     # reports
-    mylog("from_vocab_size: {}".format(FLAGS.from_vocab_size))
-    mylog("to_vocab_size: {}".format(FLAGS.to_vocab_size))
+    mylog("from_vocab_size: {}".format(FLAGS.real_vocab_size_from))
+    mylog("to_vocab_size: {}".format(FLAGS.real_vocab_size_to))
     mylog("_buckets: {}".format(FLAGS._buckets))
     mylog("Train:")
     mylog("total: {}".format(train_total_size))
