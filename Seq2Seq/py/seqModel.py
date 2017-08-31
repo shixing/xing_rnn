@@ -62,7 +62,9 @@ class SeqModel(object):
                  dtype=tf.float32,
                  with_attention = False,
                  beam_search = False,
-                 beam_buckets = None
+                 beam_buckets = None,
+                 n_samples = 500,
+                 with_sampled_softmax = False
                  ):
         """Create the model.
         
@@ -102,6 +104,8 @@ class SeqModel(object):
         self.size = size
         self.with_attention = with_attention
         self.beam_search = beam_search
+        self.with_sampled_softmax = with_sampled_softmax
+        self.n_samples = n_samples
 
 
         # some parameters
@@ -185,13 +189,31 @@ class SeqModel(object):
                     shape=[self.batch_size], name = "target{}".format(i)))
                 self.target_weights.append(tf.placeholder(dtype, 
                     shape = [self.batch_size], name="target_weight{}".format(i)))
-            
 
-        
+
+                
+        if not self.with_sampled_softmax:
+            self.softmax_loss_function = lambda x,y: tf.nn.sparse_softmax_cross_entropy_with_logits(logits=x, labels= y)
+        else:
+            def sampled_loss(labels, logits):
+                labels = tf.reshape(labels, [-1, 1])
+                # We need to compute the sampled_softmax_loss using 32bit floats to
+                # avoid numerical instabilities.
+                return tf.cast(
+                    tf.nn.sampled_softmax_loss(
+                        weights=self.output_embedding,
+                        biases=self.output_bias,
+                        labels=labels,
+                        inputs=logits,
+                        num_sampled=self.n_samples,
+                        num_classes=target_vocab_size),
+                    dtype)
+            
+            self.softmax_loss_function = lambda y,x: sampled_loss(x,y)
 
         if not beam_search:
             # Model with buckets            
-            self.model_with_buckets(self.sources_embed, self.inputs_embed, self.targets, self.target_weights, self.buckets, self.encoder_cell, self.decoder_cell, dtype, devices = devices, attention = with_attention)
+            self.model_with_buckets(self.sources_embed, self.inputs_embed, self.targets, self.target_weights, self.buckets, self.encoder_cell, self.decoder_cell, dtype, self.softmax_loss_function,  devices = devices, attention = with_attention)
 
             # train
             params = tf.trainable_variables()
@@ -284,7 +306,6 @@ class SeqModel(object):
                     source_seq, target_seq = data_set[bucket_id][start_id + i]
                 else:
                     source_seq, target_seq = [],[]
-
             
             source_seq =  [self.PAD_ID] * (source_length - len(source_seq)) + source_seq
             
@@ -330,7 +351,7 @@ class SeqModel(object):
 
     
     def model_with_buckets(self, sources, inputs, targets, weights,
-                           buckets, encoder_cell, decoder_cell, dtype,
+                           buckets, encoder_cell, decoder_cell, dtype, softmax_loss_function,
                            per_example_loss=False, name=None, devices = None, attention = False):
 
         losses = []
@@ -347,7 +368,7 @@ class SeqModel(object):
             seq2seq_f = self.basic_seq2seq
  
         # softmax
-        softmax_loss_function = lambda x,y: tf.nn.sparse_softmax_cross_entropy_with_logits(logits=x, labels= y)
+
 
 
 
@@ -361,8 +382,11 @@ class SeqModel(object):
 
                 # logits / loss / topk_values + topk_indexes
                 with tf.device(devices[-1]):
-                    _logits = [ tf.add(tf.matmul(ht, tf.transpose(self.output_embedding)), self.output_bias) for ht in _hts]
-                    logits.append(_logits)
+                    if self.with_sampled_softmax:
+                        logits.append(_hts)
+                    else:
+                        _logits = [ tf.add(tf.matmul(ht, tf.transpose(self.output_embedding)), self.output_bias) for ht in _hts]
+                        logits.append(_logits)
 
                     if per_example_loss:
                         losses.append(sequence_loss_by_example(

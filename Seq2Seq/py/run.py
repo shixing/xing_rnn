@@ -69,6 +69,7 @@ tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("n_epoch", 500,
                             "Maximum number of epochs in training.")
 
+
 # replaced by the bucket size
 
 tf.app.flags.DEFINE_integer("max_target_length", 30,"max length")
@@ -108,6 +109,9 @@ tf.app.flags.DEFINE_boolean("with_summary", False, "with_summary")
 # With Attention
 tf.app.flags.DEFINE_boolean("attention", False, "with_attention")
 
+# sampled softmax
+tf.app.flags.DEFINE_boolean("with_sampled_softmax", False, "with_sampled_softmax")
+tf.app.flags.DEFINE_integer("n_samples", 500,"n_samples for sampeled_softmax")
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -267,7 +271,9 @@ def create_model(session, run_options, run_metadata):
                      run_metadata = run_metadata,
                      with_attention = FLAGS.attention,
                      beam_search = FLAGS.beam_search,
-                     beam_buckets = _beam_buckets
+                     beam_buckets = _beam_buckets,
+                     with_sampled_softmax = FLAGS.with_sampled_softmax,
+                     n_samples = FLAGS.n_samples
                      )
 
     ckpt = tf.train.get_checkpoint_state(FLAGS.saved_model_dir)
@@ -319,8 +325,9 @@ def train():
     FLAGS.real_vocab_size_from = real_vocab_size_from
     FLAGS.real_vocab_size_to = real_vocab_size_to
 
-    #train_n_tokens = total training target size
-    train_n_tokens = np.sum([np.sum([len(items[1]) for items in x]) for x in train_data_bucket])
+    train_n_targets = np.sum([np.sum([len(items[1]) for items in x]) for x in train_data_bucket])
+    train_n_tokens = np.sum([np.sum([len(items[1])+len(items[0]) for items in x]) for x in train_data_bucket])
+    
     train_bucket_sizes = [len(train_data_bucket[b]) for b in xrange(len(_buckets))]
     train_total_size = float(sum(train_bucket_sizes))
     train_buckets_scale = [sum(train_bucket_sizes[:i + 1]) / train_total_size for i in xrange(len(train_bucket_sizes))]
@@ -402,6 +409,7 @@ def train():
         low_ppx_step = 0
         steps_per_report = 30
         n_targets_report = 0
+        n_sources_report = 0
         report_time = 0
         n_valid_sents = 0
         n_valid_words = 0
@@ -431,15 +439,16 @@ def train():
             # for report
             report_time += (time.time() - start_time)
             n_targets_report += np.sum(target_weights)
-
+            n_sources_report += np.sum(np.sign(source_inputs))
+            
             if current_step % steps_per_report == 0:
                 sect_name = "STEP {}".format(current_step)
-                msg = "StepTime: {:.4f} sec Speed: {:.4f} targets/s Total_targets: {}".format(report_time/steps_per_report, n_targets_report*1.0 / report_time, train_n_tokens)
+                msg = "StepTime: {:.4f} sec Speed: {:.4f} words/s Total_words: {}".format(report_time/steps_per_report, (n_sources_report+n_targets_report)*1.0 / report_time, train_n_tokens)
                 mylog_line(sect_name,msg)
 
                 report_time = 0
                 n_targets_report = 0
-                
+                n_sources_report = 0
 
                 # Create the Timeline object, and write it to a json
                 if FLAGS.profile:
@@ -894,7 +903,7 @@ def parsing_flags():
     # for logs
     log_path = os.path.join(FLAGS.model_dir,"log.{}.txt".format(FLAGS.mode))
     filemode = 'w' if FLAGS.fromScratch else "a"
-    logging.basicConfig(filename=log_path,level=logging.DEBUG, filemode = filemode)
+    logging.basicConfig(filename=log_path,level=logging.DEBUG, filemode = filemode, datefmt='%m/%d/%Y %I:%M:%S')
     
     FLAGS.beam_search = False
 
