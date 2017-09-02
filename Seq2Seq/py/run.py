@@ -108,6 +108,9 @@ tf.app.flags.DEFINE_boolean("with_summary", False, "with_summary")
 
 # With Attention
 tf.app.flags.DEFINE_boolean("attention", False, "with_attention")
+tf.app.flags.DEFINE_string("attention_style", "multiply", "multiply, additive")
+tf.app.flags.DEFINE_boolean("attention_scale", True, "whether scale or not")
+
 
 # sampled softmax
 tf.app.flags.DEFINE_boolean("with_sampled_softmax", False, "with_sampled_softmax")
@@ -273,7 +276,9 @@ def create_model(session, run_options, run_metadata):
                      beam_search = FLAGS.beam_search,
                      beam_buckets = _beam_buckets,
                      with_sampled_softmax = FLAGS.with_sampled_softmax,
-                     n_samples = FLAGS.n_samples
+                     n_samples = FLAGS.n_samples,
+                     attention_style = FLAGS.attention_style,
+                     attention_scale = FLAGS.attention_scale
                      )
 
     ckpt = tf.train.get_checkpoint_state(FLAGS.saved_model_dir)
@@ -457,7 +462,7 @@ def train():
                     with open('timeline.json', 'w') as f:
                         f.write(ctf)
                     exit()
-
+                    
 
             
             if current_step % steps_per_checkpoint == 0:
@@ -893,12 +898,14 @@ def parsing_flags():
 
     FLAGS.data_cache_dir = os.path.join(FLAGS.model_dir, "data_cache")
     FLAGS.saved_model_dir = os.path.join(FLAGS.model_dir, "saved_model")
+    FLAGS.decode_output_dir = os.path.join(FLAGS.model_dir, "decode_output")
     FLAGS.summary_dir = FLAGS.saved_model_dir
 
     mkdir(FLAGS.model_dir)
     mkdir(FLAGS.data_cache_dir)
     mkdir(FLAGS.saved_model_dir)
     mkdir(FLAGS.summary_dir)
+    mkdir(FLAGS.decode_output_dir)
 
     # for logs
     log_path = os.path.join(FLAGS.model_dir,"log.{}.txt".format(FLAGS.mode))
