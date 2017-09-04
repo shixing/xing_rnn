@@ -3,7 +3,7 @@ import sys
 
 class Jobs:
 
-    def __init__(self,data_dir,hours=1,machine_type="cpu8",root_dir=None,job_dir=None):
+    def __init__(self,data_dir,hours=1,machine_type="cpu8",root_dir=None,job_dir=None,per_gpu=None):
 
         self.head="""
 #!/bin/bash
@@ -26,6 +26,8 @@ DECODE_OUTPUT=$MODEL_DIR/decode_output/__decode_id__.output
 BLEU_OUTPUT=$MODEL_DIR/decode_output/__decode_id__.bleu
 
 source /home/nlg-05/xingshi/sh/init_tensorflow.sh
+
+__GPU_V__
 
 __cmd__
 """
@@ -59,13 +61,18 @@ __cmd__
 
         self.head = self.head.replace("__data_dir__",self.data_dir).replace("__queue__",self.queue).replace("__hour__", str(self.hours)).replace("__machine_type__",self.nodes_str).replace("__root_dir__", self.root_dir)
 
+        # per gpu 
+        self.per_gpu = per_gpu
+        if self.per_gpu == None:
+            self.head = self.head.replace("__GPU_V__","")
+
             
             
         def name(val):
             return val, ""
     
         def batch_size(val):
-            return "", "--batch_size {}".format(val)
+            return "m{}".format(val), "--batch_size {}".format(val)
 
         def size(val):
             return "h{}".format(val), "--size {}".format(val)
@@ -116,14 +123,31 @@ __cmd__
             return "", "--N {}".format(val)
 
         def attention_style(val):
-            return "", "--attention_style {}".format(val)
+            if val == "additive":
+                fn = "Add"
+            else:
+                fn = "Mul"
+            return fn, "--attention_style {}".format(val)
 
         def attention_scale(val):
-            return "", "--attention_scale {}".format(val)
+            if val:
+                fn = "S"
+            else:
+                fn = "NS"
+                
+            return fn, "--attention_scale {}".format(val)
 
         def beam_size(val):
             return "b{}".format(val), "--beam_size {}".format(val)
 
+        def learning_rate_decay_factor(val):
+            if val == 1.0:
+                return "",""
+            else:
+                return "decay{}".format(val),"--learning_rate_decay_factor {} --decay_learning_rate True".format(val)
+
+        
+        
         self.keys= ["name",
                     "batch_size",
                     "size",
@@ -140,6 +164,7 @@ __cmd__
                     "max_target_length",
                     "n_bucket",
                     "optimizer",
+                    "learning_rate_decay_factor",
                     "N",
                     "attention_style",
                     "attention_scale",
@@ -161,6 +186,7 @@ __cmd__
                       "max_target_length":max_target_length,
                       "n_bucket":n_bucket,
                       "optimizer":optimizer,
+                      "learning_rate_decay_factor":learning_rate_decay_factor,
                       "N":N,
                       "attention_style":attention_style,
                       "attention_scale":attention_scale,
@@ -182,6 +208,7 @@ __cmd__
                          "max_target_length":50,
                          "n_bucket":1,
                          "optimizer":"adagrad",
+                         "learning_rate_decay_factor":1.0,
                          "N":"00000",
                          "attention_style":"additive",
                          "attention_scale":True,
@@ -211,6 +238,7 @@ __cmd__
        --test_path_from $TEST_PATH_FROM --decode_output $DECODE_OUTPUT "
 
         self.bleu_cmd = "perl $BLEU -lc $TEST_PATH_TO < $DECODE_OUTPUT > $BLEU_OUTPUT" + "\ncat $BLEU_OUTPUT"
+
 
 
 
@@ -247,6 +275,7 @@ __cmd__
             decode_params.append(p_decode)
 
 
+            
         def get_name_cmd(paras):
             name = ""
             cmd = []
@@ -272,6 +301,8 @@ __cmd__
             cmd = self.train_cmd + cmd
             content = self.head.replace("__cmd__",cmd)
             content = content.replace("__id__",name)
+            if self.per_gpu:
+                content = content.replace("__GPU_V__","export CUDA_VISIBLE_DEVICES={};".format(i % self.per_gpu))
             f.write(content)
             f.close()
 

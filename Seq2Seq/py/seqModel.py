@@ -76,6 +76,9 @@ class SeqModel(object):
         self.GO_ID = 1
         self.EOS_ID = 2
         self.UNK_ID = 3
+        self.GO_ID = 1
+        self.EOS_ID = 2
+        self.UNK_ID = 3
         self.batch_size = batch_size
         self.devices = devices
         self.run_options = run_options
@@ -294,7 +297,8 @@ class SeqModel(object):
                 if start_id + i < len(data_set[bucket_id]):
                     source_seq, target_seq = data_set[bucket_id][start_id + i]
                 else:
-                    source_seq, target_seq = [],[]
+                    # in attention, if all source_seq are PAD, then the denominator of softmax will be sum(exp(-inf)) = 0, so the softmax = nan. To avoid this, we add an UNK in the source. 
+                    source_seq, target_seq = [self.UNK_ID],[]
             
             source_seq =  [self.PAD_ID] * (source_length - len(source_seq)) + source_seq
             
@@ -547,8 +551,6 @@ class SeqModel(object):
 
                 # parameters
                 self.a_w_source = tf.get_variable("a_w_source",[self.size, self.size], dtype = dtype)
-
-                self.a_v = tf.get_variable('a_v',[self.size], dtype = dtype)
 
                 self.h_w_context = tf.get_variable("h_w_context",[self.size, self.size], dtype = dtype)
                 self.h_w_target = tf.get_variable("h_w_target",[self.size, self.size], dtype = dtype)
@@ -987,17 +989,13 @@ class SeqModel(object):
             return decoder_outputs, decoder_state, encoder2before_ops, decoder2after_ops, hatt2after_ops, top_states_transform_4_op, top_states_4_op, encoder_raws_matrix_op
 
 
-    def beam_attention_seq2seq_multiply(self, bucket_id, encoder_cell, decoder_cell, encoder_inputs, decoder_inputs, dtype, devices = None):
+    def beam_attention_seq2seq_multiply(self, bucket_id, encoder_cell, decoder_cell, encoder_inputs, encoder_raws,  decoder_inputs, dtype, devices = None):
         scope_name = "attention_seq2seq"
         with tf.variable_scope(scope_name):
             init_state = encoder_cell.zero_state(self.batch_size, dtype)
             
             # parameters
             self.a_w_source = tf.get_variable("a_w_source",[self.size, self.size], dtype = dtype)
-            self.a_w_target = tf.get_variable('a_w_target',[self.size, self.size], dtype = dtype)
-            self.a_b = tf.get_variable('a_b',[self.size], dtype = dtype)
-            
-            self.a_v = tf.get_variable('a_v',[self.size], dtype = dtype)
             
             self.h_w_context = tf.get_variable("h_w_context",[self.size, self.size], dtype = dtype)
             self.h_w_target = tf.get_variable("h_w_target",[self.size, self.size], dtype = dtype)
@@ -1028,7 +1026,7 @@ class SeqModel(object):
                 top_states_4 = tf.reshape(top_states,[-1,source_length,1,self.size])
                 a_w_source_4 = tf.reshape(self.a_w_source,[1,1,self.size,self.size])
                 top_states_transform_4 = tf.nn.conv2d(top_states_4, a_w_source_4, [1,1,1,1], 'SAME') #[batch_size, source_length, 1, hidden_size]
-                
+                encoder_raws_matrix = tf.stack(encoder_raws, axis=1) # [batch_size, source_length]
 
                 
             # encoder -> before state
@@ -1051,7 +1049,7 @@ class SeqModel(object):
                 if self.attention_scale:
                     s = self.attention_g * s
                     
-                s = self.mask_score(s,encoder_raws_matrix)                
+                s = self.mask_score(s,self.encoder_raws_matrixs[bucket_id])         
                 a = tf.nn.softmax(s) 
 
                 # context = a * h_source

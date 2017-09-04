@@ -55,6 +55,8 @@ tf.app.flags.DEFINE_string("dump_lstm_output", "dump_lstm.pb", "the file to save
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.83,
                           "Learning rate decays by this much.")
+tf.app.flags.DEFINE_boolean("decay_learning_rate", False, "decay learning rate")
+
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
                           "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("keep_prob", 0.5, "dropout rate.")
@@ -187,7 +189,6 @@ def read_data_test(source_path):
         source = source_file.readline()
         counter = 0
         while source:
-            counter += 1
             if counter % 100000 == 0:
                 print("  reading data line %d" % counter)
                 sys.stdout.flush()
@@ -195,12 +196,13 @@ def read_data_test(source_path):
             for bucket_id, source_size in enumerate(_beam_buckets):
                 if len(source_ids) <= source_size:
 
-                    order.append((bucket_id, len(data_set[bucket_id])))
+                    order.append((bucket_id, len(data_set[bucket_id]), counter))
                     data_set[bucket_id].append(source_ids)
                     
                     break
             source = source_file.readline()
-    return data_set, order
+            counter += 1
+    return data_set, order, counter
 
 
 
@@ -510,6 +512,14 @@ def train():
                 else:
                     patience -= 1
 
+                    # decay the learning rate
+                    if FLAGS.decay_learning_rate:
+                        model.learning_rate_decay_op.eval()
+                        msg = "New learning_rate: {:.4f} Dev_ppx: {:.4f} Lowest_dev_ppx: {:.4f}".format(model.learning_rate.eval(), dev_ppx, low_ppx)
+                        mylog_line(sect_name, msg)
+
+                    
+
                 if patience <= 0:
                     mylog("Training finished. Running out of patience.")
                     break
@@ -535,6 +545,7 @@ def evaluate(sess, model, data_set):
 
     for sources, inputs, outputs, weights, bucket_id in ite:
         L = model.step(sess, sources, inputs, outputs, weights, bucket_id, forward_only = True)
+
         loss += L
         n_steps += 1
         n_valids += np.sum(weights)
@@ -649,7 +660,7 @@ def beam_decode():
         FLAGS.test_path_from,
         from_vocab_path)
 
-    test_data_bucket, test_data_order = read_data_test(from_test)
+    test_data_bucket, test_data_order, n_test_original = read_data_test(from_test)
 
     test_bucket_sizes = [len(test_data_bucket[b]) for b in xrange(len(_beam_buckets))]
     test_total_size = int(sum(test_bucket_sizes))
@@ -693,11 +704,11 @@ def beam_decode():
             
         i_sent = 0
 
-        targets = []
+        targets = {} # {line_id: [word_id]}
 
-        for source_inputs, bucket_id, length in ite:
+        for source_inputs, bucket_id, length, line_id in ite:
 
-            print("--- decoding {}/{} sent ---".format(i_sent, test_total_size))
+            print("--- decoding {}/{} {}/{} sent ---".format(i_sent, test_total_size,line_id,n_test_original))
             i_sent += 1
             
 
@@ -789,10 +800,17 @@ def beam_decode():
                 # print the 1 best 
             results = sorted(results, key = lambda x: -x[1])
             
-            targets.append(results[0][0])
-            
+            #targets.append(results[0][0])
+            targets[line_id] = results[0][0] # with EOS
 
-        data_utils.ids_to_tokens(targets, to_vocab_path, FLAGS.decode_output)
+        targets_in_original_order = []
+        for i in xrange(n_test_original):
+            if i in targets:
+                targets_in_original_order.append(targets[i])
+            else:
+                targets_in_original_order.append([2]) #[_EOS]
+
+        data_utils.ids_to_tokens(targets_in_original_order, to_vocab_path, FLAGS.decode_output)
                 
 
 
@@ -859,11 +877,11 @@ def dump_lstm():
         mylog_section("DUMP_LSTM")
 
         i_sent = 0
-        for inputs, outputs, weights, bucket_id in ite:
+        for inputs, outputs, weights, bucket_id, line_id in ite:
             # inputs: [[_GO],[1],[2],[3],[_EOS],[pad_id],[pad_id]]
             # positions: [4]
 
-            mylog("--- decoding {}/{} sent ---".format(i_sent, test_total_size))
+            mylog("--- decoding {}/{} {}/{} sent ---".format(i_sent, test_total_size, line_id, n_test_original))
             i_sent += 1
             #print(inputs)
             #print(outputs)

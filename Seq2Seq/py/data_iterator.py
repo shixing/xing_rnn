@@ -57,11 +57,11 @@ class DataIterator:
         # according to original order
         # one by one
         
-        for bucket_id, index in self.data_order:
+        for bucket_id, index, line_id in self.data_order:
             
             source_inputs, finished, length = self.model.get_batch_test(self.data_set, bucket_id, start_id = index)
  
-            yield source_inputs, bucket_id, length
+            yield source_inputs, bucket_id, length, line_id
 
             
             
