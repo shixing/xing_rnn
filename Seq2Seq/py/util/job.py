@@ -146,6 +146,11 @@ __cmd__
             else:
                 return "decay{}".format(val),"--learning_rate_decay_factor {} --decay_learning_rate True".format(val)
 
+        def fromScratch(val):
+            if not val:
+                return "", "--fromScratch False"
+            else:
+                return "",""
         
         
         self.keys= ["name",
@@ -168,7 +173,9 @@ __cmd__
                     "N",
                     "attention_style",
                     "attention_scale",
-                    "beam_size"]
+                    "beam_size",
+                    "fromScratch"
+        ]
         
         self.funcs = {"name":name,
                       "batch_size":batch_size,
@@ -190,7 +197,9 @@ __cmd__
                       "N":N,
                       "attention_style":attention_style,
                       "attention_scale":attention_scale,
-                      "beam_size":beam_size}
+                      "beam_size":beam_size,
+                      "fromScratch":fromScratch
+        }
 
         self.train_template = {"name":"enfr10k",
                          "batch_size":128,
@@ -212,6 +221,7 @@ __cmd__
                          "N":"00000",
                          "attention_style":"additive",
                          "attention_scale":True,
+                               "fromScratch":True
                          }
 
         self.decode_template = {"name":"enfr10k",
@@ -239,7 +249,7 @@ __cmd__
 
         self.bleu_cmd = "perl $BLEU -lc $TEST_PATH_TO < $DECODE_OUTPUT > $BLEU_OUTPUT" + "\ncat $BLEU_OUTPUT"
 
-
+        self.err_redirect = "2>{}.err.txt"
 
 
     def generate(self,grids,beams):
@@ -298,7 +308,7 @@ __cmd__
             # train
             fn = "{}/{}.{}.sh".format(self.job_dir,name,"train")
             f = open(fn,'w')
-            cmd = self.train_cmd + cmd
+            cmd = self.train_cmd + cmd + " " + self.err_redirect.format(name)
             content = self.head.replace("__cmd__",cmd)
             content = content.replace("__id__",name)
             if self.per_gpu:

@@ -4,8 +4,8 @@ from job import Jobs
 
 def main():
     
-    j = Jobs("enfr",hours = 10, machine_type = "gpu4",per_gpu=4)
-    grids = {"name":["enfr"],
+    j = Jobs("enfr1m",hours = 10, machine_type = "gpu4",per_gpu = 4)
+    grids = {"name":["enfr1m"],
              "batch_size":[128],
              "size": [500],
              "dropout":[0.8],
@@ -23,8 +23,9 @@ def main():
              "optimizer":["sgd"],
              "learning_rate_decay_factor":[0.5],
              "N":["00000"],
-             "attention_style":["additive","multiply"],
-             "attention_scale":[True,False]
+             "attention_style":["multiply","additive"],
+             "attention_scale":[True,False],
+             "fromScratch":[True]
     }
 
     beams = [12]

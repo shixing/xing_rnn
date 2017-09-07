@@ -13,9 +13,8 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 import logging
 from logging_helper import mylog, mylog_section, mylog_subsection, mylog_line
-
 import data_utils
-from seqModel import SeqModel
+from seqModelDistributed import SeqModelDistributed
 
 import data_iterator
 from data_iterator import DataIterator
@@ -85,7 +84,8 @@ tf.app.flags.DEFINE_integer("n_bucket", 10,
 tf.app.flags.DEFINE_integer("patience", 10,"exit if the model can't improve for $patence evals")
 
 # devices
-tf.app.flags.DEFINE_string("N", "00000", "GPU layer distribution: [input_embedding, layer1, layer2, attention_layer, softmax]. Generally, it's better to put top layer and attention_layer at the same GPU and put softmax in a seperate GPU ")
+tf.app.flags.DEFINE_string("NN", "00000,00000", "GPU layer distribution: [input_embedding, layer1, layer2, attention_layer, softmax]. Generally, it's better to put top layer and attention_layer at the same GPU and put softmax in a seperate GPU ")
+
 
 # training parameter
 tf.app.flags.DEFINE_string("optimizer", "adam",
@@ -119,7 +119,6 @@ tf.app.flags.DEFINE_boolean("attention_scale", True, "whether scale or not")
 # sampled softmax
 tf.app.flags.DEFINE_boolean("with_sampled_softmax", False, "with_sampled_softmax")
 tf.app.flags.DEFINE_integer("n_samples", 500,"n_samples for sampeled_softmax")
-
 
 # initializition
 tf.app.flags.DEFINE_float("p", 0.0, "if p=0, use glorot_uniform_initializer, else use uniform(-p,p)")
@@ -186,28 +185,9 @@ def read_data(source_path, target_path, max_size=None):
   return data_set
 
 
-def read_data_test(source_path):
 
-    order = []
-    data_set = [[] for _ in _beam_buckets]
-    with tf.gfile.GFile(source_path, mode="r") as source_file:
-        source = source_file.readline()
-        counter = 0
-        while source:
-            if counter % 100000 == 0:
-                print("  reading data line %d" % counter)
-                sys.stdout.flush()
-            source_ids = [int(x) for x in source.split()][::-1]
-            for bucket_id, source_size in enumerate(_beam_buckets):
-                if len(source_ids) <= source_size:
 
-                    order.append((bucket_id, len(data_set[bucket_id]), counter))
-                    data_set[bucket_id].append(source_ids)
-                    
-                    break
-            source = source_file.readline()
-            counter += 1
-    return data_set, order, counter
+
 
 
 def get_device_address(s):
@@ -244,35 +224,40 @@ def log_flags():
 
 
 def create_model(session, run_options, run_metadata):
-    devices = get_device_address(FLAGS.N)
+    device_strs = FLAGS.NN.split(",")
+    devices_per_model = [get_device_address(x) for x in device_strs]
+    num_models = len(device_strs)
     dtype = tf.float32
+
     initializer = None
     if FLAGS.p != 0.0:
         initializer = tf.random_uniform_initializer(-FLAGS.p,FLAGS.p)
-    with tf.variable_scope("v0",initializer = initializer):
-        model = SeqModel(FLAGS._buckets,
-                         FLAGS.size,
-                         FLAGS.real_vocab_size_from,
-                         FLAGS.real_vocab_size_to,
-                         FLAGS.num_layers,
-                         FLAGS.max_gradient_norm,
-                         FLAGS.batch_size,
-                         FLAGS.learning_rate,
-                         FLAGS.learning_rate_decay_factor,
-                         optimizer = FLAGS.optimizer,
-                         dropoutRate = FLAGS.keep_prob,
-                         dtype = dtype,
-                         devices = devices,
-                         topk_n = FLAGS.beam_size,
-                         run_options = run_options,
-                         run_metadata = run_metadata,
-                         with_attention = FLAGS.attention,
-                         beam_search = FLAGS.beam_search,
-                         beam_buckets = _beam_buckets,
-                         with_sampled_softmax = FLAGS.with_sampled_softmax,
-                         n_samples = FLAGS.n_samples,
-                         attention_style = FLAGS.attention_style,
-                         attention_scale = FLAGS.attention_scale
+        
+    with tf.variable_scope("",initializer = initializer):
+        model = SeqModelDistributed(FLAGS._buckets,
+                                    FLAGS.size,
+                                    FLAGS.real_vocab_size_from,
+                                    FLAGS.real_vocab_size_to,
+                                    FLAGS.num_layers,
+                                    FLAGS.max_gradient_norm,
+                                    FLAGS.batch_size,
+                                    FLAGS.learning_rate,
+                                    FLAGS.learning_rate_decay_factor,
+                                    optimizer = FLAGS.optimizer,
+                                    dropoutRate = FLAGS.keep_prob,
+                                    dtype = dtype,
+                                    devices_per_model = devices_per_model,
+                                    topk_n = FLAGS.beam_size,
+                                    run_options = run_options,
+                                    run_metadata = run_metadata,
+                                    with_attention = FLAGS.attention,
+                                    beam_search = FLAGS.beam_search,
+                                    beam_buckets = _beam_buckets,
+                                    with_sampled_softmax = FLAGS.with_sampled_softmax,
+                                    n_samples = FLAGS.n_samples,
+                                    attention_style = FLAGS.attention_style,
+                                    attention_scale = FLAGS.attention_scale,
+                                    num_models = num_models
                          )
 
     ckpt = tf.train.get_checkpoint_state(FLAGS.saved_model_dir)
@@ -282,19 +267,32 @@ def create_model(session, run_options, run_metadata):
 
         if FLAGS.load_from_best:
             best_model_path = os.path.join(os.path.dirname(ckpt.model_checkpoint_path),"best-0")
-            mylog("Reading model parameters from %s" % best_model_path)
-            model.saver.restore(session, best_model_path)
+            model.load_parameters(session, best_model_path)
         else:
-            mylog("Reading model parameters from %s" % ckpt.model_checkpoint_path)
-            model.saver.restore(session, ckpt.model_checkpoint_path)
+            model.load_parameters(session, ckpt.model_checkpoint_path)
             
         if FLAGS.mode == 'BEAM_DECODE':
             session.run(tf.variables_initializer(model.beam_search_vars))
             
     else:
-        mylog("Created model with fresh parameters.")
-        session.run(tf.global_variables_initializer())
+        model.init_parameters_from_scratch(session)
     return model
+
+
+def test_save_and_reload():
+    config = tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)
+    config.gpu_options.allow_growth = FLAGS.allow_growth
+
+    with tf.Session(config=config) as sess:
+        model = create_model(sess, None, None)
+        model.init_parameters_from_scratch(session)
+        checkpoint_path = os.path.join(FLAGS.saved_model_dir, "model")
+        model.saver.save(sess, checkpoint_path, global_step=0, write_meta_graph = False)
+        
+
+
+
+
 
 def train():
 
@@ -424,7 +422,8 @@ def train():
             
             # data and train
             source_inputs, target_inputs, target_outputs, target_weights, bucket_id = ite.next()
-
+            
+            
             L = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id)
             
             # loss and time
@@ -434,13 +433,14 @@ def train():
             current_step += 1
             n_valid_sents += np.sum(np.sign(target_weights[0]))
             n_valid_words += np.sum(target_weights)
-
+            
             # for report
             report_time += (time.time() - start_time)
             n_targets_report += np.sum(target_weights)
             n_sources_report += np.sum(np.sign(source_inputs))
-            
-            if current_step % steps_per_report == 1:
+
+    
+            if current_step % steps_per_report == 0:
                 sect_name = "STEP {}".format(current_step)
                 msg = "StepTime: {:.4f} sec Speed: {:.4f} words/s Total_words: {}".format(report_time/steps_per_report, (n_sources_report+n_targets_report)*1.0 / report_time, train_n_tokens)
                 mylog_line(sect_name,msg)
@@ -459,14 +459,14 @@ def train():
                     
 
             
-            if current_step % steps_per_checkpoint == 1:
+            if current_step % steps_per_checkpoint == 0:
 
                 i_checkpoint = int(current_step / steps_per_checkpoint)
                 
                 # train_ppx
                 loss = loss / n_valid_words
                 train_ppx = math.exp(float(loss)) if loss < 300 else float("inf")
-                learning_rate = model.learning_rate.eval()
+                learning_rate = model.get_learning_rate(sess)
                 
                                 
                 # dev_ppx
@@ -506,8 +506,8 @@ def train():
 
                     # decay the learning rate
                     if FLAGS.decay_learning_rate:
-                        model.learning_rate_decay_op.eval()
-                        msg = "New learning_rate: {:.4f} Dev_ppx: {:.4f} Lowest_dev_ppx: {:.4f}".format(model.learning_rate.eval(), dev_ppx, low_ppx)
+                        sess.run(model.learning_rate_dacay_ops)
+                        msg = "New learning_rate: {:.4f} Dev_ppx: {:.4f} Lowest_dev_ppx: {:.4f}".format(model.get_learning_rate(sess), dev_ppx, low_ppx)
                         mylog_line(sect_name, msg)
 
                     
@@ -524,7 +524,7 @@ def train():
 def evaluate(sess, model, data_set):
     # Run evals on development set and print their perplexity/loss.
     dropoutRateRaw = FLAGS.keep_prob
-    sess.run(model.dropout10_op)
+    sess.run(model.dropout10_ops)
 
     start_id = 0
     loss = 0.0
@@ -536,6 +536,7 @@ def evaluate(sess, model, data_set):
     ite = dite.next_sequence(stop = True)
 
     for sources, inputs, outputs, weights, bucket_id in ite:
+        
         L = model.step(sess, sources, inputs, outputs, weights, bucket_id, forward_only = True)
 
         loss += L
@@ -545,7 +546,7 @@ def evaluate(sess, model, data_set):
     loss = loss/(n_valids)
     ppx = math.exp(loss) if loss < 300 else float("inf")
 
-    sess.run(model.dropoutAssign_op)
+    sess.run(model.dropoutAssign_ops)
 
     return loss, ppx
 

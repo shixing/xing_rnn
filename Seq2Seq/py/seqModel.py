@@ -67,7 +67,8 @@ class SeqModel(object):
                  n_samples = 500,
                  with_sampled_softmax = False,
                  attention_style = "additive",
-                 attention_scale = True
+                 attention_scale = True,
+                 standalone = True
                  ):
         """Create the model.
         """
@@ -95,18 +96,18 @@ class SeqModel(object):
         self.n_samples = n_samples
         self.attention_style = attention_style
         self.attention_scale = attention_scale
+        self.max_gradient_norm = max_gradient_norm
 
+        
         # some parameters
         with tf.device(devices[0]):
-            self.dropoutRate = tf.Variable(
-                float(dropoutRate), trainable=False, dtype=dtype)        
+            self.dropoutRate = tf.get_variable('dropoutRate',initializer = float(dropoutRate), trainable=False, dtype=dtype)        
             self.dropoutAssign_op = self.dropoutRate.assign(dropoutRate)
             self.dropout10_op = self.dropoutRate.assign(1.0)
-            self.learning_rate = tf.Variable(
-                float(learning_rate), trainable=False, dtype=dtype)
+            self.learning_rate = tf.get_variable("learning_rate", initializer = float(learning_rate), trainable=False, dtype=dtype)
             self.learning_rate_decay_op = self.learning_rate.assign(
                 self.learning_rate * learning_rate_decay_factor)
-            self.global_step = tf.Variable(0, trainable=False)
+            self.global_step = tf.get_variable("global_step", initializer = 0, trainable=False, dtype = tf.int32)
             
             
         # Input Layer
@@ -135,9 +136,6 @@ class SeqModel(object):
                 input_embed = tf.nn.embedding_lookup(self.input_embedding, input_plhd)
                 self.inputs.append(input_plhd)
                 self.inputs_embed.append(input_embed)
-
-
-
                 
         def lstm_cell(device,input_keep_prob = 1.0, output_keep_prob = 1.0):
             cell = tf.contrib.rnn.LSTMCell(size, state_is_tuple=True)
@@ -159,9 +157,6 @@ class SeqModel(object):
             
         self.encoder_cell = tf.contrib.rnn.MultiRNNCell(encoder_cells, state_is_tuple=True)
         self.decoder_cell = tf.contrib.rnn.MultiRNNCell(decoder_cells, state_is_tuple=True)
-
-
-
 
         
         # Output Layer
@@ -208,47 +203,74 @@ class SeqModel(object):
             self.model_with_buckets(self.sources_embed, self.sources, self.inputs_embed, self.targets, self.target_weights, self.buckets, self.encoder_cell, self.decoder_cell, dtype, self.softmax_loss_function, devices = devices, attention = with_attention)
 
             # train
-            params = tf.trainable_variables()
             if not forward_only:
-                self.gradient_norms = []
-                self.updates = []
-                    
+
+                # params                
+                params = tf.contrib.framework.get_trainable_variables(scope=variable_scope.get_variable_scope())
+                self.params = params
+ 
+                # unclipped gradients
+                self.gradients = [] # [bucket_id][variable_id]
+                for b in xrange(len(buckets)):
+                    gradients = tf.gradients(self.losses[b], params, colocate_gradients_with_ops=True)
+                    self.gradients.append(gradients)
+
+                # optimizor
                 if optimizer == "adagrad":
                     opt = tf.train.AdagradOptimizer(self.learning_rate)
                 elif optimizer == 'adam':
                     opt = tf.train.AdamOptimizer(self.learning_rate)
                 else:
                     opt = tf.train.GradientDescentOptimizer(learning_rate = self.learning_rate)
-                    
-                for b in xrange(len(buckets)):
-                    gradients = tf.gradients(self.losses[b], params, colocate_gradients_with_ops=True)
-                    clipped_gradients, norm = tf.clip_by_global_norm(gradients, max_gradient_norm)
-                    self.gradient_norms.append(norm)
-                    self.updates.append(opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step))
+                self.opt = opt
+
+                # updates
+                if standalone:
+                    self.updates = []
+                    self.gradient_norms = []
+
+                    for b in xrange(len(buckets)):
+                        clipped_gradients, norm = tf.clip_by_global_norm(self.gradients[b], max_gradient_norm)
+                        self.gradient_norms.append(norm)
+                        self.updates.append(opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step))
 
         else: # for beam search
 
             self.init_beam_decoder(beam_buckets)
 
-        all_vars = tf.global_variables()
-        self.train_vars = []
-        self.beam_search_vars = []
-        for var in all_vars:
-            if not var.name.startswith("beam_search"):
-                self.train_vars.append(var)
-            else:
-                self.beam_search_vars.append(var)
+        if standalone: 
+            all_vars = tf.global_variables()
+            self.train_vars = []
+            self.beam_search_vars = []
+            for var in all_vars:
+                if not var.name.startswith("beam_search"):
+                    self.train_vars.append(var)
+                else:
+                    self.beam_search_vars.append(var)
 
-        self.saver = tf.train.Saver(self.train_vars)
-        self.best_saver = tf.train.Saver(self.train_vars)
+            self.saver = tf.train.Saver(self.train_vars)
+            self.best_saver = tf.train.Saver(self.train_vars)
         
+    def init_agg_updates(self,agg_gradients):
+        
+        self.updates =[]
+        self.gradient_norms = []
+        for b in xrange(len(self.buckets)):
+            clipped_gradients, norm = tf.clip_by_global_norm(agg_gradients[b], self.max_gradient_norm)
+            self.gradient_norms.append(norm)
+            self.updates.append(self.opt.apply_gradients(zip(clipped_gradients, self.params), global_step = self.global_step))
+            
 
-
+        
+        
+        
 
 
 
     ######### Train ##########
 
+
+    
     def step(self,session, sources, inputs, targets, target_weights, 
         bucket_id, forward_only = False, dump_lstm = False):
 

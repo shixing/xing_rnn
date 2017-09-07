@@ -4,8 +4,8 @@ from job import Jobs
 
 def main():
     
-    j = Jobs("enfr",hours = 10, machine_type = "gpu4",per_gpu=4)
-    grids = {"name":["enfr"],
+    j = Jobs("claim2title",hours = 10, machine_type = "gpu4")
+    grids = {"name":["c2t"],
              "batch_size":[128],
              "size": [500],
              "dropout":[0.8],
@@ -16,15 +16,15 @@ def main():
              "from_vocab_size":[200000],
              "to_vocab_size":[40000],
              "min_source_length":[0],
-             "max_source_length":[50],
+             "max_source_length":[200],
              "min_target_length":[0],
-             "max_target_length":[50],
+             "max_target_length":[100],
              "n_bucket":[5],
              "optimizer":["sgd"],
              "learning_rate_decay_factor":[0.5],
-             "N":["00000"],
-             "attention_style":["additive","multiply"],
-             "attention_scale":[True,False]
+             "N":["01223"],
+             "attention_style":["multiply"],
+             "attention_scale":[False]
     }
 
     beams = [12]
