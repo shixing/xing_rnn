@@ -226,7 +226,7 @@ def log_flags():
 def create_model(session, run_options, run_metadata):
     device_strs = FLAGS.NN.split(",")
     devices_per_model = [get_device_address(x) for x in device_strs]
-    num_models = len(device_strs)
+    num_models = FLAGS.num_models
     dtype = tf.float32
 
     initializer = None
@@ -335,7 +335,7 @@ def train():
     # steps
     batch_size = FLAGS.batch_size
     n_epoch = FLAGS.n_epoch
-    steps_per_epoch = int(train_total_size / batch_size)
+    steps_per_epoch = int(train_total_size / batch_size / FLAGS.num_models)
     steps_per_dev = int(dev_total_size / batch_size)
     steps_per_checkpoint = int(steps_per_epoch / 2)
     total_steps = steps_per_epoch * n_epoch
@@ -440,7 +440,7 @@ def train():
             n_sources_report += np.sum(np.sign(source_inputs))
 
     
-            if current_step % steps_per_report == 0:
+            if current_step % steps_per_report == 1:
                 sect_name = "STEP {}".format(current_step)
                 msg = "StepTime: {:.4f} sec Speed: {:.4f} words/s Total_words: {}".format(report_time/steps_per_report, (n_sources_report+n_targets_report)*1.0 / report_time, train_n_tokens)
                 mylog_line(sect_name,msg)
@@ -459,7 +459,7 @@ def train():
                     
 
             
-            if current_step % steps_per_checkpoint == 0:
+            if current_step % steps_per_checkpoint == 1:
 
                 i_checkpoint = int(current_step / steps_per_checkpoint)
                 
@@ -924,6 +924,9 @@ def parsing_flags():
     logging.basicConfig(filename=log_path,level=logging.DEBUG, filemode = filemode, format="%(asctime)s %(threadName)-10s %(message)s",datefmt='%m/%d/%Y %I:%M:%S')
     
     FLAGS.beam_search = False
+
+    FLAGS.num_models = len(FLAGS.NN.split(","))
+    
 
     log_flags()
 

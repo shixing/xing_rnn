@@ -4,7 +4,7 @@ from job import Jobs
 
 def main():
     
-    j = Jobs("enfr1m",hours = 10, machine_type = "gpu4",per_gpu = 4)
+    j = Jobs("enfr1m",hours = 10, machine_type = "gpu4")
     grids = {"name":["enfr1m"],
              "batch_size":[128],
              "size": [500],
@@ -22,7 +22,7 @@ def main():
              "n_bucket":[5],
              "optimizer":["sgd"],
              "learning_rate_decay_factor":[0.5],
-             "N":["00000"],
+             "NN":["00000,11111,22222,33333"],
              "attention_style":["multiply","additive"],
              "attention_scale":[True,False],
              "fromScratch":[True]
@@ -30,7 +30,7 @@ def main():
 
     beams = [12]
     
-    j.generate(grids,beams)
+    j.generate(grids,beams, dist = True)
 
         
 

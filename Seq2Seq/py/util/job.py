@@ -13,6 +13,7 @@ class Jobs:
 
 ROOT_DIR=__root_dir__
 PY=$ROOT_DIR/py/run.py
+PYDIST=$ROOT_DIR/py/runDistributed.py
 BLEU=$ROOT_DIR/py/util/multi-bleu.perl
 MODEL_DIR=$ROOT_DIR/model/__id__
 DATA_DIR=$ROOT_DIR/data/__data_dir__/
@@ -122,6 +123,10 @@ __cmd__
         def N(val):
             return "", "--N {}".format(val)
 
+        def NN(val):
+            n_model = len(val.split(","))
+            return "DIST{}".format(n_model), "--NN {}".format(val)
+
         def attention_style(val):
             if val == "additive":
                 fn = "Add"
@@ -171,6 +176,7 @@ __cmd__
                     "optimizer",
                     "learning_rate_decay_factor",
                     "N",
+                    "NN",
                     "attention_style",
                     "attention_scale",
                     "beam_size",
@@ -195,6 +201,7 @@ __cmd__
                       "optimizer":optimizer,
                       "learning_rate_decay_factor":learning_rate_decay_factor,
                       "N":N,
+                      "NN":NN,
                       "attention_style":attention_style,
                       "attention_scale":attention_scale,
                       "beam_size":beam_size,
@@ -224,6 +231,29 @@ __cmd__
                                "fromScratch":True
                          }
 
+        self.train_template_dist = {"name":"enfr10k",
+                         "batch_size":128,
+                         "size": 200,
+                         "dropout":0.7,
+                         "learning_rate":0.5,
+                         "n_epoch":100,
+                         "num_layers":2,
+                         "attention":True,
+                         "from_vocab_size":40000,
+                         "to_vocab_size":40000,
+                         "min_source_length":0,
+                         "max_source_length":50,
+                         "min_target_length":0,
+                         "max_target_length":50,
+                         "n_bucket":1,
+                         "optimizer":"adagrad",
+                         "learning_rate_decay_factor":1.0,
+                         "NN":"00000",
+                         "attention_style":"additive",
+                         "attention_scale":True,
+                        "fromScratch":True
+                         }
+
         self.decode_template = {"name":"enfr10k",
                          "size": 200,
                          "num_layers":2,
@@ -244,6 +274,8 @@ __cmd__
         
         self.train_cmd ="python $PY --mode TRAIN --model_dir $MODEL_DIR --train_path_from $TRAIN_PATH_FROM --dev_path_from $DEV_PATH_FROM --train_path_to $TRAIN_PATH_TO --dev_path_to $DEV_PATH_TO --saveCheckpoint True --allow_growth True "
 
+        self.train_cmd_dist ="python $PYDIST --mode TRAIN --model_dir $MODEL_DIR --train_path_from $TRAIN_PATH_FROM --dev_path_from $DEV_PATH_FROM --train_path_to $TRAIN_PATH_TO --dev_path_to $DEV_PATH_TO --saveCheckpoint True --allow_growth True "
+        
         self.decode_cmd = "python $PY --mode BEAM_DECODE --model_dir $MODEL_DIR \
        --test_path_from $TEST_PATH_FROM --decode_output $DECODE_OUTPUT "
 
@@ -252,10 +284,18 @@ __cmd__
         self.err_redirect = "2>{}.err.txt"
 
 
-    def generate(self,grids,beams):
+    def generate(self,grids,beams,dist = False):
         '''
         grid = {"key":[value]}
         '''            
+
+        train_template = self.train_template
+        train_cmd = self.train_cmd
+        if dist:
+            train_template = self.train_template_dist
+            train_cmd = self.train_cmd_dist
+
+        
         
         n = len(grids)
         keys = grids.keys()
@@ -275,7 +315,7 @@ __cmd__
         params = []
         decode_params = []
         for r in results:
-            p = dict(self.train_template)
+            p = dict(train_template)
             p_decode = dict(self.decode_template)
             for k,v in r:
                 p[k] = v
@@ -308,7 +348,7 @@ __cmd__
             # train
             fn = "{}/{}.{}.sh".format(self.job_dir,name,"train")
             f = open(fn,'w')
-            cmd = self.train_cmd + cmd + " " + self.err_redirect.format(name)
+            cmd = train_cmd + cmd + " " + self.err_redirect.format(name)
             content = self.head.replace("__cmd__",cmd)
             content = content.replace("__id__",name)
             if self.per_gpu:

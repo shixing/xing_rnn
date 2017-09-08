@@ -551,6 +551,7 @@ def evaluate(sess, model, data_set):
 
 
 def force_decode():
+    # TODO: Not Tested Yet
     # force_decode it: generate a file which contains every score and the final score; 
     mylog_section("READ DATA")
 
@@ -647,8 +648,9 @@ def beam_decode():
     FLAGS.real_vocab_size_from = real_vocab_size_from
     FLAGS.real_vocab_size_to = real_vocab_size_to
     
+    # make dir to store test.src.id
     from_test = data_utils.prepare_test_data(
-        FLAGS.data_cache_dir,
+        FLAGS.decode_output_test_id_dir,
         FLAGS.test_path_from,
         from_vocab_path)
 
@@ -808,6 +810,7 @@ def beam_decode():
 
            
 def dump_lstm():
+    # Not tested yet
     # dump the hidden states to some where
     mylog_section("READ DATA")
     test_data_bucket, _buckets, test_data_order = read_test(FLAGS.data_cache_dir, FLAGS.test_path, get_vocab_path(FLAGS.data_cache_dir), FLAGS.L, FLAGS.n_bucket)
@@ -894,9 +897,6 @@ def dump_lstm():
 
         fdump.close()
         
-    
-
-
 
 def mkdir(path):
     if not os.path.exists(path):
@@ -917,8 +917,15 @@ def parsing_flags():
     mkdir(FLAGS.summary_dir)
     mkdir(FLAGS.decode_output_dir)
 
-    # for logs
-    log_path = os.path.join(FLAGS.model_dir,"log.{}.txt".format(FLAGS.mode))
+    if FLAGS.mode == "BEAM_DECODE":
+        FLAGS.decode_output_id = FLAGS.decode_output.split("/")[-1].split(".")[0]
+        FLAGS.decode_output_test_id_dir = os.path.join(FLAGS.decode_output_dir, FLAGS.decode_output_id)
+        mkdir(FLAGS.decode_output_test_id_dir)
+        log_path = os.path.join(FLAGS.model_dir,"log.{}.{}.txt".format(FLAGS.mode, FLAGS.decode_output_id))
+        
+    else:
+        log_path = os.path.join(FLAGS.model_dir,"log.{}.txt".format(FLAGS.mode))
+        
     filemode = 'w' if FLAGS.fromScratch else "a"
     logging.basicConfig(filename=log_path,level=logging.DEBUG, filemode = filemode, format="%(asctime)s %(threadName)-10s %(message)s",datefmt='%m/%d/%Y %I:%M:%S')
     
