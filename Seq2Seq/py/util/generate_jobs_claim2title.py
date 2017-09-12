@@ -22,7 +22,7 @@ def main():
              "n_bucket":[5],
              "optimizer":["sgd"],
              "learning_rate_decay_factor":[0.5],
-             "N":["01223"],
+             "NN":["00001",'22223'],
              "attention_style":["multiply"],
              "attention_scale":[False]
     }

@@ -211,7 +211,8 @@ One important observation is that we should put LSTM layer 2 and attention layer
  | 200k | 1000 | 5 | N00001 | 2100 | 8294 | 10907 | 62 | 62 | 
 
 # Reference
-
+[Tensorflow NMT](https://github.com/tensorflow/nmt)
+[Distributed Tensorflow](https://github.com/tensorflow/benchmarks/blob/master/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py)
 # TODO
 1. Layer batch normalization
 2. BPE encoding

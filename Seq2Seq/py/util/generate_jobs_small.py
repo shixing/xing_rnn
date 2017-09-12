@@ -57,7 +57,7 @@ def distributed():
     
     beams = [10]
     
-    j.generate(grids,beams)
+    j.generate(grids,beams,dist=True)
 
     
 
