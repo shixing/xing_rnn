@@ -1,13 +1,14 @@
 
 #!/bin/bash
-#PBS -q isi
+#PBS -q isi80
 #PBS -l walltime=1:00:00
-#PBS -l nodes=1:ppn=8
+#PBS -l nodes=1:ppn=16:gpus=4:shared
 
 ROOT_DIR=../
 PY=$ROOT_DIR/py/run.py
+PYDIST=$ROOT_DIR/py/runDistributed.py
 BLEU=$ROOT_DIR/py/util/multi-bleu.perl
-MODEL_DIR=$ROOT_DIR/model/smallh100d07l01n2attadagrad
+MODEL_DIR=$ROOT_DIR/model/smallm4h100d07l01n2attadagradDIST4AddNS
 DATA_DIR=$ROOT_DIR/data/small/
 TRAIN_PATH_FROM=$DATA_DIR/train.src
 TRAIN_PATH_TO=$DATA_DIR/train.tgt
@@ -20,4 +21,7 @@ BLEU_OUTPUT=$MODEL_DIR/decode_output/b10.bleu
 
 source /home/nlg-05/xingshi/sh/init_tensorflow.sh
 
-python $PY --mode BEAM_DECODE --model_dir $MODEL_DIR        --test_path_from $TEST_PATH_FROM --decode_output $DECODE_OUTPUT  --size 100 --num_layers 2 --attention True --from_vocab_size 100 --to_vocab_size 100 --min_source_length 0 --max_source_length 22 --min_target_length 0 --max_target_length 22 --n_bucket 2 --N 00000 --attention_style additive --attention_scale True --beam_size 10
+
+
+perl $BLEU -lc $TEST_PATH_TO < $DECODE_OUTPUT > $BLEU_OUTPUT
+cat $BLEU_OUTPUT

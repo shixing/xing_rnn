@@ -32,96 +32,89 @@ from state import StateWrapper
 ############################
 
 # mode
-tf.app.flags.DEFINE_string("mode", "TRAIN", "TRAIN|FORCE_DECODE|BEAM_DECODE|DUMP_LSTM")
+tf.app.flags.DEFINE_string("mode", "TRAIN", "TRAIN") # currently, only support distributed training; 
 
 # datasets, paths, and preprocessing
-tf.app.flags.DEFINE_string("model_dir", "./model", "model_dir/data_cache/n model_dir/saved_model; model_dir/log.txt .")
-tf.app.flags.DEFINE_string("train_path_from", "./train", "the absolute path of raw source train file.")
-tf.app.flags.DEFINE_string("dev_path_from", "./dev", "the absolute path of raw source dev file.")
-tf.app.flags.DEFINE_string("test_path_from", "./test", "the absolute path of raw source test file.")
+tf.app.flags.DEFINE_string("model_dir", "../model/small", "where the model and log will be saved")
+tf.app.flags.DEFINE_string("train_path_from", "../data/small/train.src ", "the absolute path of raw source train file.")
+tf.app.flags.DEFINE_string("dev_path_from", "../data/small/valid.src", "the absolute path of raw source dev file.")
+tf.app.flags.DEFINE_string("test_path_from", "../data/small/test.src", "the absolute path of raw source test file.")
 
-tf.app.flags.DEFINE_string("train_path_to", "./train", "the absolute path of raw target train file.")
-tf.app.flags.DEFINE_string("dev_path_to", "./dev", "the absolute path of raw target dev file.")
-tf.app.flags.DEFINE_string("test_path_to", "./test", "the absolute path of raw target test file.")
+tf.app.flags.DEFINE_string("train_path_to", "../data/small/train.tgt", "the absolute path of raw target train file.")
+tf.app.flags.DEFINE_string("dev_path_to", "../data/small/valid.tgt", "the absolute path of raw target dev file.")
+tf.app.flags.DEFINE_string("test_path_to", "../data/small/test.tgt", "the absolute path of raw target test file.")
 
-tf.app.flags.DEFINE_string("decode_output", "./output", "beam search decode output.")
+tf.app.flags.DEFINE_string("decode_output", "./model/small/decode_output/b10.output", "beam search decode output file.")
 
-
-tf.app.flags.DEFINE_string("force_decode_output", "force_decode.txt", "the file name of the score file as the output of force_decode. The file will be put at model_dir/force_decode_output")
-tf.app.flags.DEFINE_string("dump_lstm_output", "dump_lstm.pb", "the file to save hidden states as a protobuffer as the output of dump_lstm. The file will be put at model_dir/dump_lstm_output")
-
-
-
-# tuning hypers
+# training hypers
+tf.app.flags.DEFINE_string("optimizer", "adam",
+                            "optimizer to choose: adam, adagrad, sgd.")
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.83,
-                          "Learning rate decays by this much.")
-tf.app.flags.DEFINE_boolean("decay_learning_rate", False, "decay learning rate")
+                          "Learning rate decays ratio. The learning rate will decay is the perplexity on valid set increases.")
+tf.app.flags.DEFINE_boolean("decay_learning_rate", False, "whether to decay the learning rate if the perplexity on valid set increases.")
 
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
                           "Clip gradients to this norm.")
-tf.app.flags.DEFINE_float("keep_prob", 0.5, "dropout rate.")
+tf.app.flags.DEFINE_float("keep_prob", 0.5, "1 - dropout rate.")
 tf.app.flags.DEFINE_integer("batch_size", 64,
-                            "Batch size to use during training/evaluation.")
+                            "Batch size to use during training.")
 
-tf.app.flags.DEFINE_integer("from_vocab_size", 10000, "from vocabulary size.")
-tf.app.flags.DEFINE_integer("to_vocab_size", 10000, "to vocabulary size.")
+tf.app.flags.DEFINE_integer("from_vocab_size", 10000, "max source side vocabulary size, includes 4 special tokens: _PAD _GO _EOS _UNK")
+tf.app.flags.DEFINE_integer("to_vocab_size", 10000, "max target side vocabulary size, includes 4 special tokens: _PAD _GO _EOS _UNK")
 
-tf.app.flags.DEFINE_integer("size", 128, "Size of each model layer.")
-tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")
+tf.app.flags.DEFINE_integer("size", 128, "The hidden states size.")
+tf.app.flags.DEFINE_integer("num_layers", 1, "Number of LSTM layers.")
 tf.app.flags.DEFINE_integer("n_epoch", 500,
                             "Maximum number of epochs in training.")
 
-
-# replaced by the bucket size
-
-tf.app.flags.DEFINE_integer("max_target_length", 30,"max length")
-tf.app.flags.DEFINE_integer("min_target_length", 0,"max length")
-tf.app.flags.DEFINE_integer("max_source_length", 30,"max length")
-tf.app.flags.DEFINE_integer("min_source_length", 0,"max length")
-tf.app.flags.DEFINE_integer("n_bucket", 10,
-                            "num of buckets to run.")
-tf.app.flags.DEFINE_integer("patience", 10,"exit if the model can't improve for $patence evals")
-
-# devices
-tf.app.flags.DEFINE_string("NN", "00000,00000", "GPU layer distribution: [input_embedding, layer1, layer2, attention_layer, softmax]. Generally, it's better to put top layer and attention_layer at the same GPU and put softmax in a seperate GPU ")
-
-
-# training parameter
-tf.app.flags.DEFINE_string("optimizer", "adam",
-                            "optimizer: adam, adagrad, sgd.")
 tf.app.flags.DEFINE_boolean("fromScratch", True,
-                            "withAdagrad.")
+                            "whether start the training from scratch, otherwise, the model will try to load the existing model saved at $model_dir")
 tf.app.flags.DEFINE_boolean("saveCheckpoint", False,
-                            "save Model at each checkpoint.")
-tf.app.flags.DEFINE_boolean("profile", False, "False = no profile, True = profile")
+                            "whether save Model at each checkpoint. Each checkpoint is per half epoch. ")
 
-# for beam_decoder
-tf.app.flags.DEFINE_integer("beam_size", 10,"the beam size")
-tf.app.flags.DEFINE_boolean("print_beam", False, "to print beam info")
-tf.app.flags.DEFINE_float("min_ratio", 0.5, "min_ratio.")
-tf.app.flags.DEFINE_float("max_ratio", 1.5, "max_ratio.")
-tf.app.flags.DEFINE_boolean("load_from_best", True, "load best model to decode")
+tf.app.flags.DEFINE_integer("patience", 10,"exit if the perplexity on valid set can't improve for $patence evals. The perplexity of valid set is calculated every half epoch.")
 
-
-# GPU configuration
-tf.app.flags.DEFINE_boolean("allow_growth", False, "allow growth")
-
-# Summary
-tf.app.flags.DEFINE_boolean("with_summary", False, "with_summary")
+# bucket size
+tf.app.flags.DEFINE_integer("max_target_length", 30,"max target length, should be the real max length of target sentence + 1, because we will add _GO symbol to target side")
+tf.app.flags.DEFINE_integer("min_target_length", 0,"min target length")
+tf.app.flags.DEFINE_integer("max_source_length", 30,"max source length, equals to the real max length of source sentence. ")
+tf.app.flags.DEFINE_integer("min_source_length", 0,"min source length")
+tf.app.flags.DEFINE_integer("n_bucket", 5,
+                            "num of buckets to run. More buckets will increase the speed without occupy more memory. However, the model will take much longer time to initialize.")
 
 # With Attention
 tf.app.flags.DEFINE_boolean("attention", False, "with_attention")
 tf.app.flags.DEFINE_string("attention_style", "multiply", "multiply, additive")
-tf.app.flags.DEFINE_boolean("attention_scale", True, "whether scale or not")
+tf.app.flags.DEFINE_boolean("attention_scale", True, "whether to scale or not")
 
 
 # sampled softmax
-tf.app.flags.DEFINE_boolean("with_sampled_softmax", False, "with_sampled_softmax")
-tf.app.flags.DEFINE_integer("n_samples", 500,"n_samples for sampeled_softmax")
+tf.app.flags.DEFINE_boolean("with_sampled_softmax", False, "with sampled softmax")
+tf.app.flags.DEFINE_integer("n_samples", 500,"number of samples for sampeled_softmax")
 
 # initializition
-tf.app.flags.DEFINE_float("p", 0.0, "if p=0, use glorot_uniform_initializer, else use uniform(-p,p)")
+tf.app.flags.DEFINE_float("p", 0.0, "if p=0, use glorot_uniform_initializer, else use random_uniform(-p,p)")
+
+# devices placement
+tf.app.flags.DEFINE_string("NN", "00001,22223", "Each (num_layer+3) digits represents the layer device placement of one model: [input_embedding, layer1, layer2, attention_layer, softmax]. Generally, it's better to put top layer and attention_layer at the same GPU and put softmax in a seperate GPU. 00001,22223 will put the first model on GPU0 and GPU1, the second model on GPU2 and GPU3.")
+
+# profile parameter
+tf.app.flags.DEFINE_boolean("profile", False, "Whether to profile the timing and device placement. It's better to turn this option on for really small model, as it will slow the speed significantly.")
+
+# GPU configuration
+tf.app.flags.DEFINE_boolean("allow_growth", False, "allow growth means tensorflow will not occupy all the memory of each GPU")
+
+# Summary
+tf.app.flags.DEFINE_boolean("with_summary", False, "whether to run the training with summary writer. If yes, the summary will be stored in folder /model/{model_id}/saved_model/train.summary. You can use tensorboard to access this.")
+
+# for beam_decoder
+tf.app.flags.DEFINE_integer("beam_size", 10,"the beam size for beam search.")
+tf.app.flags.DEFINE_boolean("print_beam", False, "whether to print beam info.")
+tf.app.flags.DEFINE_float("min_ratio", 0.5, "min ratio: the output should be at least source_length*min_ratio long.")
+tf.app.flags.DEFINE_float("max_ratio", 1.5, "max ratio: the output should be at most source_length*max_ratio long")
+tf.app.flags.DEFINE_boolean("load_from_best", True, "whether to load best model to decode. If False, it will load the last model saved.")
+
 
 
 
@@ -290,10 +283,6 @@ def test_save_and_reload():
         model.saver.save(sess, checkpoint_path, global_step=0, write_meta_graph = False)
         
 
-
-
-
-
 def train():
 
     # Read Data
@@ -457,7 +446,6 @@ def train():
                         f.write(ctf)
                     exit()
                     
-
             
             if current_step % steps_per_checkpoint == 1:
 
@@ -550,87 +538,6 @@ def evaluate(sess, model, data_set):
 
     return loss, ppx
 
-
-def force_decode():
-    # force_decode it: generate a file which contains every score and the final score; 
-    mylog_section("READ DATA")
-
-    test_data_bucket, _buckets, test_data_order = read_test(FLAGS.data_cache_dir, FLAGS.test_path, get_vocab_path(FLAGS.data_cache_dir), FLAGS.L, FLAGS.n_bucket)
-    vocab_path = get_vocab_path(FLAGS.data_cache_dir)
-    real_vocab_size = get_real_vocab_size(vocab_path)
-
-    FLAGS._buckets = _buckets
-    FLAGS.real_vocab_size = real_vocab_size
-
-    test_bucket_sizes = [len(test_data_bucket[b]) for b in xrange(len(_buckets))]
-    test_total_size = int(sum(test_bucket_sizes))
-
-    # reports
-    mylog_section("REPORT")
-    mylog("real_vocab_size: {}".format(FLAGS.real_vocab_size))
-    mylog("_buckets:{}".format(FLAGS._buckets))
-    mylog("FORCE_DECODE:")
-    mylog("total: {}".format(test_total_size))
-    mylog("bucket_sizes: {}".format(test_bucket_sizes))
-    
-    config = tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)
-    config.gpu_options.allow_growth = FLAGS.allow_growth
-
-    mylog_section("IN TENSORFLOW")
-    with tf.Session(config=config) as sess:
-
-        # runtime profile
-        if FLAGS.profile:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-            run_metadata = tf.RunMetadata()
-        else:
-            run_options = None
-            run_metadata = None
-
-        mylog("Creating Model")
-        model = create_model(sess, run_options, run_metadata)
-                
-        mylog_section("All Variables")
-        show_all_variables()
- 
-        sess.run(model.dropoutRate.assign(1.0))
-
-        start_id = 0
-        n_steps = 0
-        batch_size = FLAGS.batch_size
-
-        mylog_section("Data Iterators")
-        dite = DataIterator(model, test_data_bucket, len(_buckets), batch_size, None, data_order = test_data_order)
-        ite = dite.next_original()
-            
-        fdump = open(FLAGS.score_file,'w')
-
-        i_sent = 0
-
-        mylog_section("FORCE_DECODING")
-
-        for inputs, outputs, weights, bucket_id in ite:
-            # inputs: [[_GO],[1],[2],[3],[_EOS],[pad_id],[pad_id]]
-            # positions: [4]
-
-            mylog("--- decoding {}/{} sent ---".format(i_sent, test_total_size))
-            i_sent += 1
-            #print(inputs)
-            #print(outputs)
-            #print(weights)
-            #print(bucket_id)
-
-            L = model.step(sess, inputs, outputs, weights, bucket_id, forward_only = True, dump_lstm = False)
-            
-            mylog("LOSS: {}".format(L))
-
-            fdump.write("{}\n".format(L))
-        
-            # do the following convert:
-            # inputs: [[pad_id],[1],[2],[pad_id],[pad_id],[pad_id]]
-            # positions:[2]
-
-        fdump.close()
             
 
 
@@ -685,217 +592,9 @@ def beam_decode():
         model = create_model(sess, run_options, run_metadata)
         show_all_variables()
 
-        sess.run(model.dropoutRate.assign(1.0))
-
-        start_id = 0
-        n_steps = 0
-        batch_size = FLAGS.batch_size
-    
-        dite = DataIterator(model, test_data_bucket, len(_beam_buckets), batch_size, None, data_order = test_data_order)
-        ite = dite.next_original()
-
-            
-        i_sent = 0
-
-        targets = {} # {line_id: [word_id]}
-
-        for source_inputs, bucket_id, length, line_id in ite:
-
-            print("--- decoding {}/{} {}/{} sent ---".format(i_sent, test_total_size,line_id,n_test_original))
-            i_sent += 1
-            
-
-            results = [] # (sentence,score)
-            scores = [0.0] * FLAGS.beam_size
-            sentences = [[] for x in xrange(FLAGS.beam_size)]
-            beam_parent = range(FLAGS.beam_size)
-
-            target_inputs = [data_utils.GO_ID] * FLAGS.beam_size
-            min_target_length = int(length * FLAGS.min_ratio) + 1
-            max_target_length = int(length * FLAGS.max_ratio) + 1 # include EOS
-            for i in xrange(max_target_length):
-                if i == 0:
-                    top_value, top_index, eos_value = model.beam_step(sess, bucket_id, index=i, sources = source_inputs, target_inputs = target_inputs)
-                else:
-                    top_value, top_index, eos_value = model.beam_step(sess, bucket_id, index=i,  target_inputs = target_inputs, beam_parent = beam_parent)
-
-                # top_value = [array[batch_size, batch_size]]
-                # top_index = [array[batch_size, batch_size]]
-                # eos_value = [array[batch_size, 1] ]
-                                        
-                # expand
-                global_queue = []
-
-                if i == 0:
-                    nrow = 1
-                else:
-                    nrow = FLAGS.beam_size
-
-                if i == max_target_length - 1: # last_step
-                    for row in xrange(nrow):
-
-                        score = scores[row] + np.log(eos_value[0][row,0])
-                        word_index = data_utils.EOS_ID
-                        beam_index = row
-                        global_queue.append((score, beam_index, word_index))                         
-
-                else:
-                    for row in xrange(nrow):
-                        for col in xrange(top_index[0].shape[1]):
-                            score = scores[row] + np.log(top_value[0][row,col])
-                            word_index = top_index[0][row,col]
-                            beam_index = row
-
-                            global_queue.append((score, beam_index, word_index))                         
-
-                global_queue = sorted(global_queue, key = lambda x : -x[0])
-
-
-                if FLAGS.print_beam:
-                    print("--------- Step {} --------".format(i))
-
-                target_inputs = []
-                beam_parent = []
-                scores = []
-                temp_sentences = []
-
-                for j, (score, beam_index, word_index) in enumerate(global_queue):
-                    if word_index == data_utils.EOS_ID:
-                        if len(sentences[beam_index])+1 < min_target_length:
-                            continue
-
-                        results.append((sentences[beam_index] + [word_index], score))
-                        if FLAGS.print_beam:
-                            print("*Beam:{} Father:{} word:{} score:{}".format(j,beam_index,word_index,score))
-                        continue
-                    
-                    if FLAGS.print_beam:
-                        print("Beam:{} Father:{} word:{} score:{}".format(j,beam_index,word_index,score))
-                    beam_parent.append(beam_index)
-
-                    
-                    target_inputs.append(word_index)
-                    scores.append(score)
-                    temp_sentences.append(sentences[beam_index] + [word_index])
-                    
-                    if len(scores) >= FLAGS.beam_size:
-                        break
-                   
-                # can not fill beam_size, just repeat the last one
-                while len(scores) < FLAGS.beam_size and i < max_target_length - 1:
-                    beam_parent.append(beam_parent[-1])
-                    target_inputs.append(target_inputs[-1])
-                    scores.append(scores[-1])
-                    temp_sentences.append(temp_sentences[-1])
-                
-                sentences = temp_sentences
-                    
-                # print the 1 best 
-            results = sorted(results, key = lambda x: -x[1])
-            
-            #targets.append(results[0][0])
-            targets[line_id] = results[0][0] # with EOS
-
-        targets_in_original_order = []
-        for i in xrange(n_test_original):
-            if i in targets:
-                targets_in_original_order.append(targets[i])
-            else:
-                targets_in_original_order.append([2]) #[_EOS]
-
-        data_utils.ids_to_tokens(targets_in_original_order, to_vocab_path, FLAGS.decode_output)
-                
-
 
            
-def dump_lstm():
-    # dump the hidden states to some where
-    mylog_section("READ DATA")
-    test_data_bucket, _buckets, test_data_order = read_test(FLAGS.data_cache_dir, FLAGS.test_path, get_vocab_path(FLAGS.data_cache_dir), FLAGS.L, FLAGS.n_bucket)
-    vocab_path = get_vocab_path(FLAGS.data_cache_dir)
-    real_vocab_size = get_real_vocab_size(vocab_path)
 
-    FLAGS._buckets = _buckets
-    FLAGS.real_vocab_size = real_vocab_size
-
-    test_bucket_sizes = [len(test_data_bucket[b]) for b in xrange(len(_buckets))]
-    test_total_size = int(sum(test_bucket_sizes))
-
-    # reports
-    mylog_section("REPORT")
-
-    mylog("real_vocab_size: {}".format(FLAGS.real_vocab_size))
-    mylog("_buckets:{}".format(FLAGS._buckets))
-    mylog("DUMP_LSTM:")
-    mylog("total: {}".format(test_total_size))
-    mylog("buckets: {}".format(test_bucket_sizes))
-    
-    config = tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)
-    config.gpu_options.allow_growth = FLAGS.allow_growth
-    with tf.Session(config=config) as sess:
-
-        # runtime profile
-        if FLAGS.profile:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-            run_metadata = tf.RunMetadata()
-        else:
-            run_options = None
-            run_metadata = None
-
-        mylog_section("MODEL")
-
-        mylog("Creating Model")
-        model = create_model(sess, run_options, run_metadata)
-        
-        mylog("Init tensors to dump")
-        model.init_dump_states()
-
-        #dump_graph('graph.txt')
-        mylog_section("All Variables")
-        show_all_variables()
- 
-        sess.run(model.dropoutRate.assign(1.0))
-
-        start_id = 0
-        n_steps = 0
-        batch_size = FLAGS.batch_size
-
-        mylog_section("Data Iterators")
-
-        dite = DataIterator(model, test_data_bucket, len(_buckets), batch_size, None, data_order = test_data_order)
-        ite = dite.next_original()
-            
-        fdump = open(FLAGS.dump_file,'wb')
-
-        mylog_section("DUMP_LSTM")
-
-        i_sent = 0
-        for inputs, outputs, weights, bucket_id, line_id in ite:
-            # inputs: [[_GO],[1],[2],[3],[_EOS],[pad_id],[pad_id]]
-            # positions: [4]
-
-            mylog("--- decoding {}/{} {}/{} sent ---".format(i_sent, test_total_size, line_id, n_test_original))
-            i_sent += 1
-            #print(inputs)
-            #print(outputs)
-            #print(weights)
-            #print(bucket_id)
-
-            L, states = model.step(sess, inputs, outputs, weights, bucket_id, forward_only = True, dump_lstm = True)
-            
-            mylog("LOSS: {}".format(L))
-            
-            sw = StateWrapper()
-            sw.create(inputs,outputs,weights,states)
-            sw.save_to_stream(fdump)
-            
-            # do the following convert:
-            # inputs: [[pad_id],[1],[2],[pad_id],[pad_id],[pad_id]]
-            # positions:[2]
-
-        fdump.close()
-        
-    
 
 
 

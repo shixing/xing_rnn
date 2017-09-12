@@ -12,17 +12,95 @@ A tensorflow based **Seq2Seq model** implementation with following highlights:
  4. Easy hyperparameter tuning: a single script to generate both **training** and **decoding** scripts on different hyperparameter settings (**grid search**).
  5. A good documentation to illustrate **padding**, **source reverse**, **buckets**, and **multi-GPU support**
  6. Detail analysis the effect of different hyperparameter settings on **speed**, **GPU memory usage** and **performance**.
+7. [TODO]BPE;
+8. [TODO]Ensemble;
 
-# Required Packages
-
+# Installation
 Current version is compatible with `tensorflow 1.12` and `cuda 8.0`
 
-#Train & Decode
+```bash
+git clone https://github.com/shixing/xing_rnn.git
+cd xing_rnn/Seq2Seq/
+bash init.sh  # create folder: model, jobs
+```
+
+# Train & Decode
+
+## Single Model on a Single Machine
+Folder `data/small` contains the train, dev and test data set for a toy task `string copy`. To train a seq2seq model on your `GPU` or `CPU`, run the following script: 
+```bash 
+cd xingshi_rnn/Seq2Seq/sh
+bash smallm4h100d07l01n2attadagradAddNS.train.sh
+```
+As the script name indicates, it's a 2 layers (n2), 100 hidden states (h100) seq2seq model with additive attention (att AddNS), and trained by adagrad (adagrad) with learining rate 0.1 (l01), dropout rate 0.3 (d07) and batch size 4 (m4). The saved model and log file will appears in `xing_rnn/Seq2Seq/model/smallm4h100d07l01n2attadagradAddNS/`.
+To decode and get the BLEU score
+```bash
+bash smallm4h100d07l01n2attadagradAddNS.b10.decode.sh
+bash smallm4h100d07l01n2attadagradAddNS.b10.bleu.sh
+```
+As the script name indicates, the beam size of decoding is 10. The decode output will be `model/smallm4h100d07l01n2attadagradAddNS/decode_output/b10.output`, and the BLEU score will be `model/smallm4h100d07l01n2attadagradAddNS/decode_output/b10.bleu`.
+
+## Data Parallel on a Multi-GPU Machine
+We also support data parallelism for training, i.e. you can make several replica of your model and place them on different GPUs, all these replica will train in a `synchronize` way. This essentially means a larger batch size, it's more stable so that you can choose a larger learning rate to start with. More detials about `synchronize-SGD`, please refer to [Revisiting Distributed Synchronous SGD](https://openreview.net/pdf?id=D1VDZ5kMAu5jEJ1zfEWL).
+To train our string copy seq2seq model with 4 replicas on a `4 GPU` machine, run the following script: 
+```bash 
+bash smallm4h100d07l01n2attadagradDIST4AddNS.train.sh
+```
+The model and log will be saved at `model/smallm4h100d07l01n2attadagradDIST4AddNS`.
+Similarly, to decode and evaluate the BLEU score, run the following script:
+```bash
+bash smallm4h100d07l01n2attadagradDIST4AddNS.b10.train.sh
+bash smallm4h100d07l01n2attadagradDIST4AddNS.b10.train.sh
+```
+The decode output will be `model/smallm4h100d07l01n2attadagradDIST4AddNS/decode_output/b10.output`, and the BLEU score will be `model/smallm4h100d07l01n2attadagradDIST4AddNS/decode_output/b10.bleu`.
 
 # Hyperparameter Tuning
 
 ## Descriptions
+Details of each hyper parameters can be view by:
+```
+cd py/
+python run.py -h 
+python runDistributed.py -h # for the distributed version
+```
 ## Grid Search 
+We also provide a toolkit for easy grid search of desired hyper parameters. Run the following script: 
+```
+cd xing_rnn/Seq2Seq/py/util/
+python generate_jobs_small.py
+```
+This generates a series of scripts at folder `xing_rnn/Seq2Seq/jobs/`. These scripts contains 5 sets of  scripts where each set have one training script (`{model_id}.train.sh`), several decoding and BLEU calculation scripts with different beam size (`{model_id}.b{beam_size}.decode.sh` and `{model_id}.b{beam_size}.bleu.sh`). The toolkit will replect the hyper parameters in the name of generated scripts. The hyper parameters of the 5 sets of scripts are: 
+```
+smallm4h100d05l01n2attadagradAddNS
+smallm4h100d05l01n2attadagradMulNS
+smallm4h100d07l01n2attadagradAddNS
+smallm4h100d07l01n2attadagradMulNS
+smallm4h100d07l01n2attadagradDIST4AddNS
+```
+You can customize the searching space by create a new python file like `generate_jobs_xxx.py`, and just copy and paste the code from `generate_jobs_small.py`. Then you can change the values in the variable `grids` to reflect the the searching range. For example, we want to search the learning rate in [0.05,0.1,0.5,1.0], dropout rate in [0.5,0.7,0.9] and two different attention styles ['additive'，'multiply'], we can make the following `grids`: 
+```python 
+grids = {"name":["xxx"],
+        "batch_size":[4],
+        "size": [100],
+        "dropout":[0.5, 0.7, 0.9],
+        "learning_rate":[0.05, 0.1, 0.5, 1.0],
+        "n_epoch":[100],
+        "num_layers":[2],
+        "attention":[True],
+        "from_vocab_size":[100],
+        "to_vocab_size":[100],
+        "min_source_length":[0],
+        "max_source_length":[22],
+        "min_target_length":[0],
+        "max_target_length":[22],
+        "n_bucket":[2],
+        "optimizer":["adagrad"],
+        "N":["00000"],
+        "attention_style":["additive",'multiply'],
+        "attention_scale":[False]
+    }
+```
+It will generate us 3\*4\*2 = 24 sets of scripts in `xing_rnn/Seq2Seq/jobs`.
 
 # Advanced Guide
 
@@ -46,7 +124,7 @@ model/{model_id}/
 	saved_model/
 		train.summary/
 	decode_output/
-		{decode_id}.output
+a		{decode_id}.output
 		{decode_id}.bleu
 		{decode_id}/
 			test.src.id
@@ -67,6 +145,8 @@ model/{model_id}/
 ### Model parallel
 ### Data parallel 
 	
+## Decoding Length Control
+
 ## Tensorboard:
 
 ```bash

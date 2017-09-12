@@ -36,94 +36,85 @@ from state import StateWrapper
 tf.app.flags.DEFINE_string("mode", "TRAIN", "TRAIN|FORCE_DECODE|BEAM_DECODE|DUMP_LSTM")
 
 # datasets, paths, and preprocessing
-tf.app.flags.DEFINE_string("model_dir", "./model", "model_dir/data_cache/n model_dir/saved_model; model_dir/log.txt .")
-tf.app.flags.DEFINE_string("train_path_from", "./train", "the absolute path of raw source train file.")
-tf.app.flags.DEFINE_string("dev_path_from", "./dev", "the absolute path of raw source dev file.")
-tf.app.flags.DEFINE_string("test_path_from", "./test", "the absolute path of raw source test file.")
+tf.app.flags.DEFINE_string("model_dir", "../model/small", "where the model and log will be saved")
+tf.app.flags.DEFINE_string("train_path_from", "../data/small/train.src ", "the absolute path of raw source train file.")
+tf.app.flags.DEFINE_string("dev_path_from", "../data/small/valid.src", "the absolute path of raw source dev file.")
+tf.app.flags.DEFINE_string("test_path_from", "../data/small/test.src", "the absolute path of raw source test file.")
 
-tf.app.flags.DEFINE_string("train_path_to", "./train", "the absolute path of raw target train file.")
-tf.app.flags.DEFINE_string("dev_path_to", "./dev", "the absolute path of raw target dev file.")
-tf.app.flags.DEFINE_string("test_path_to", "./test", "the absolute path of raw target test file.")
+tf.app.flags.DEFINE_string("train_path_to", "../data/small/train.tgt", "the absolute path of raw target train file.")
+tf.app.flags.DEFINE_string("dev_path_to", "../data/small/valid.tgt", "the absolute path of raw target dev file.")
+tf.app.flags.DEFINE_string("test_path_to", "../data/small/test.tgt", "the absolute path of raw target test file.")
 
-tf.app.flags.DEFINE_string("decode_output", "./output", "beam search decode output.")
+tf.app.flags.DEFINE_string("decode_output", "./model/small/decode_output/b10.output", "beam search decode output file.")
 
-
-tf.app.flags.DEFINE_string("force_decode_output", "force_decode.txt", "the file name of the score file as the output of force_decode. The file will be put at model_dir/force_decode_output")
-tf.app.flags.DEFINE_string("dump_lstm_output", "dump_lstm.pb", "the file to save hidden states as a protobuffer as the output of dump_lstm. The file will be put at model_dir/dump_lstm_output")
-
-
-
-# tuning hypers
+# training hypers
+tf.app.flags.DEFINE_string("optimizer", "adam",
+                            "optimizer to choose: adam, adagrad, sgd.")
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.83,
-                          "Learning rate decays by this much.")
-tf.app.flags.DEFINE_boolean("decay_learning_rate", False, "decay learning rate")
+                          "Learning rate decays ratio. The learning rate will decay is the perplexity on valid set increases.")
+tf.app.flags.DEFINE_boolean("decay_learning_rate", False, "whether to decay the learning rate if the perplexity on valid set increases.")
 
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
                           "Clip gradients to this norm.")
-tf.app.flags.DEFINE_float("keep_prob", 0.5, "dropout rate.")
+tf.app.flags.DEFINE_float("keep_prob", 0.5, "1 - dropout rate.")
 tf.app.flags.DEFINE_integer("batch_size", 64,
-                            "Batch size to use during training/evaluation.")
+                            "Batch size to use during training.")
 
-tf.app.flags.DEFINE_integer("from_vocab_size", 10000, "from vocabulary size.")
-tf.app.flags.DEFINE_integer("to_vocab_size", 10000, "to vocabulary size.")
+tf.app.flags.DEFINE_integer("from_vocab_size", 10000, "max source side vocabulary size, includes 4 special tokens: _PAD _GO _EOS _UNK")
+tf.app.flags.DEFINE_integer("to_vocab_size", 10000, "max target side vocabulary size, includes 4 special tokens: _PAD _GO _EOS _UNK")
 
-tf.app.flags.DEFINE_integer("size", 128, "Size of each model layer.")
-tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")
+tf.app.flags.DEFINE_integer("size", 128, "The hidden states size.")
+tf.app.flags.DEFINE_integer("num_layers", 1, "Number of LSTM layers.")
 tf.app.flags.DEFINE_integer("n_epoch", 500,
                             "Maximum number of epochs in training.")
 
-
-# replaced by the bucket size
-
-tf.app.flags.DEFINE_integer("max_target_length", 30,"max length")
-tf.app.flags.DEFINE_integer("min_target_length", 0,"max length")
-tf.app.flags.DEFINE_integer("max_source_length", 30,"max length")
-tf.app.flags.DEFINE_integer("min_source_length", 0,"max length")
-tf.app.flags.DEFINE_integer("n_bucket", 10,
-                            "num of buckets to run.")
-tf.app.flags.DEFINE_integer("patience", 10,"exit if the model can't improve for $patence evals")
-
-# devices
-tf.app.flags.DEFINE_string("N", "00000", "GPU layer distribution: [input_embedding, layer1, layer2, attention_layer, softmax]. Generally, it's better to put top layer and attention_layer at the same GPU and put softmax in a seperate GPU ")
-
-# training parameter
-tf.app.flags.DEFINE_string("optimizer", "adam",
-                            "optimizer: adam, adagrad, sgd.")
 tf.app.flags.DEFINE_boolean("fromScratch", True,
-                            "withAdagrad.")
+                            "whether start the training from scratch, otherwise, the model will try to load the existing model saved at $model_dir")
 tf.app.flags.DEFINE_boolean("saveCheckpoint", False,
-                            "save Model at each checkpoint.")
-tf.app.flags.DEFINE_boolean("profile", False, "False = no profile, True = profile")
+                            "whether save Model at each checkpoint. Each checkpoint is per half epoch. ")
 
-# for beam_decoder
-tf.app.flags.DEFINE_integer("beam_size", 10,"the beam size")
-tf.app.flags.DEFINE_boolean("print_beam", False, "to print beam info")
-tf.app.flags.DEFINE_float("min_ratio", 0.5, "min_ratio.")
-tf.app.flags.DEFINE_float("max_ratio", 1.5, "max_ratio.")
-tf.app.flags.DEFINE_boolean("load_from_best", True, "load best model to decode")
+tf.app.flags.DEFINE_integer("patience", 10,"exit if the perplexity on valid set can't improve for $patence evals. The perplexity of valid set is calculated every half epoch.")
 
-
-# GPU configuration
-tf.app.flags.DEFINE_boolean("allow_growth", False, "allow growth")
-
-# Summary
-tf.app.flags.DEFINE_boolean("with_summary", False, "with_summary")
+# bucket size
+tf.app.flags.DEFINE_integer("max_target_length", 30,"max target length, should be the real max length of target sentence + 1, because we will add _GO symbol to target side")
+tf.app.flags.DEFINE_integer("min_target_length", 0,"min target length")
+tf.app.flags.DEFINE_integer("max_source_length", 30,"max source length, equals to the real max length of source sentence. ")
+tf.app.flags.DEFINE_integer("min_source_length", 0,"min source length")
+tf.app.flags.DEFINE_integer("n_bucket", 5,
+                            "num of buckets to run. More buckets will increase the speed without occupy more memory. However, the model will take much longer time to initialize.")
 
 # With Attention
 tf.app.flags.DEFINE_boolean("attention", False, "with_attention")
 tf.app.flags.DEFINE_string("attention_style", "multiply", "multiply, additive")
-tf.app.flags.DEFINE_boolean("attention_scale", True, "whether scale or not")
+tf.app.flags.DEFINE_boolean("attention_scale", True, "whether to scale or not")
 
 
 # sampled softmax
-tf.app.flags.DEFINE_boolean("with_sampled_softmax", False, "with_sampled_softmax")
-tf.app.flags.DEFINE_integer("n_samples", 500,"n_samples for sampeled_softmax")
-
+tf.app.flags.DEFINE_boolean("with_sampled_softmax", False, "with sampled softmax")
+tf.app.flags.DEFINE_integer("n_samples", 500,"number of samples for sampeled_softmax")
 
 # initializition
-tf.app.flags.DEFINE_float("p", 0.0, "if p=0, use glorot_uniform_initializer, else use uniform(-p,p)")
+tf.app.flags.DEFINE_float("p", 0.0, "if p=0, use glorot_uniform_initializer, else use random_uniform(-p,p)")
 
+# devices placement
+tf.app.flags.DEFINE_string("N", "00000", "There should be (num_layer+3) digits represents the layer device placement of the model: [input_embedding, layer1, layer2, attention_layer, softmax]. Generally, it's better to put top layer and attention_layer at the same GPU and put softmax in a seperate GPU. e.g. 00000 will put all layers on GPU0.")
+
+# profile parameter
+tf.app.flags.DEFINE_boolean("profile", False, "Whether to profile the timing and device placement. It's better to turn this option on for really small model, as it will slow the speed significantly.")
+
+# GPU configuration
+tf.app.flags.DEFINE_boolean("allow_growth", False, "allow growth means tensorflow will not occupy all the memory of each GPU")
+
+# Summary
+tf.app.flags.DEFINE_boolean("with_summary", False, "whether to run the training with summary writer. If yes, the summary will be stored in folder /model/{model_id}/saved_model/train.summary. You can use tensorboard to access this.")
+
+# for beam_decoder
+tf.app.flags.DEFINE_integer("beam_size", 10,"the beam size for beam search.")
+tf.app.flags.DEFINE_boolean("print_beam", False, "whether to print beam info.")
+tf.app.flags.DEFINE_float("min_ratio", 0.5, "min ratio: the output should be at least source_length*min_ratio long.")
+tf.app.flags.DEFINE_float("max_ratio", 1.5, "max ratio: the output should be at most source_length*max_ratio long")
+tf.app.flags.DEFINE_boolean("load_from_best", True, "whether to load best model to decode. If False, it will load the last model saved.")
 
 
 FLAGS = tf.app.flags.FLAGS

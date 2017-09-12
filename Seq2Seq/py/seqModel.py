@@ -21,7 +21,6 @@ from tensorflow.python.ops import variable_scope
 
 import data_iterator
 
-# import env
 
 class DeviceCellWrapper(tf.nn.rnn_cell.RNNCell):
   def __init__(self, cell, device):
@@ -250,7 +249,9 @@ class SeqModel(object):
 
             self.saver = tf.train.Saver(self.train_vars)
             self.best_saver = tf.train.Saver(self.train_vars)
-        
+
+
+    # for distributed version;         
     def init_agg_updates(self,agg_gradients):
         
         self.updates =[]
