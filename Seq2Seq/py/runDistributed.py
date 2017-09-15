@@ -118,7 +118,8 @@ tf.app.flags.DEFINE_boolean("load_from_best", True, "whether to load best model 
 # dynamic_rnn
 tf.app.flags.DEFINE_boolean("dynamic_rnn", True, "whether to use dynamic_rnn instead of static_rnn.")
 
-
+# data_prepocess
+tf.app.flags.DEFINE_boolean("preprocess_data", True, "whether to preprocess data. Default: True.")
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -308,7 +309,9 @@ def train():
         FLAGS.dev_path_from,
         FLAGS.dev_path_to,
         FLAGS.from_vocab_size,
-        FLAGS.to_vocab_size)
+        FLAGS.to_vocab_size,
+        preprocess_data = FLAGS.preprocess_data
+    )
 
 
     train_data_bucket = read_data(from_train,to_train)

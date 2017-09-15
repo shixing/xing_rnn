@@ -98,7 +98,7 @@ class Attention:
                 self.fi_b =  tf.get_variable('fi_b',[self.model.size], dtype = self.model.dtype)
 
                 if self.model.attention_scale:
-                    self.attention_g = tf.get_variable('attention_g', dtype=dtype, initializer=math.sqrt(1. / self.model.size))
+                    self.attention_g = tf.get_variable('attention_g', dtype=self.model.dtype, initializer=math.sqrt(1. / self.model.size))
 
     def mask_score(self,scores, encoder_inputs, mask_value = float('-inf')):
         '''
@@ -135,7 +135,7 @@ class Attention:
         s = tf.matmul(query_transform_3, top_states_transform_3, transpose_b = True) # s = [batch_size, 1, source_length]
         s = array_ops.squeeze(s, [1])
 
-        if self.attention_scale:
+        if self.model.attention_scale:
             s = self.attention_g * s
 
         s = self.mask_score(s,encoder_raws_matrix)                

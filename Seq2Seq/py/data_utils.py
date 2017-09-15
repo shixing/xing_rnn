@@ -263,7 +263,7 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size, tokenizer
 
 
 def prepare_data(data_dir, from_train_path, to_train_path, from_dev_path, to_dev_path, from_vocabulary_size,
-                 to_vocabulary_size, tokenizer=None):
+                 to_vocabulary_size, tokenizer=None, preprocess_data = True):
   """Preapre all necessary files that are required for the training.
     Args:
       data_dir: the folder to store the processed file
@@ -275,6 +275,7 @@ def prepare_data(data_dir, from_train_path, to_train_path, from_dev_path, to_dev
       to_vocabulary_size: size of the "to language" vocabulary to create and use.
       tokenizer: a function to use to tokenize each data sentence;
         if None, basic_tokenizer will be used.
+      preprocess_data: if False, only return the address. 
     Returns:
       A tuple of 6 elements:
         (1) path to the token-ids for "from language" training data-set,
@@ -288,20 +289,23 @@ def prepare_data(data_dir, from_train_path, to_train_path, from_dev_path, to_dev
 
   to_vocab_path = os.path.join(data_dir, "vocab.to")
   from_vocab_path =  os.path.join(data_dir,"vocab.from")
-  create_vocabulary(to_vocab_path, to_train_path , to_vocabulary_size, tokenizer)
-  create_vocabulary(from_vocab_path, from_train_path , from_vocabulary_size, tokenizer)
+  if preprocess_data:
+    create_vocabulary(to_vocab_path, to_train_path , to_vocabulary_size, tokenizer)
+    create_vocabulary(from_vocab_path, from_train_path , from_vocabulary_size, tokenizer)
 
   # Create token ids for the training data.
   to_train_ids_path = os.path.join(data_dir,"train.tgt.ids")
   from_train_ids_path = os.path.join(data_dir,"train.src.ids")
-  data_to_token_ids(to_train_path, to_train_ids_path, to_vocab_path, tokenizer)
-  data_to_token_ids(from_train_path, from_train_ids_path, from_vocab_path, tokenizer)
+  if preprocess_data:
+    data_to_token_ids(to_train_path, to_train_ids_path, to_vocab_path, tokenizer)
+    data_to_token_ids(from_train_path, from_train_ids_path, from_vocab_path, tokenizer)
 
   # Create token ids for the development data.
   to_dev_ids_path = os.path.join(data_dir,"dev.tgt.ids")
   from_dev_ids_path = os.path.join(data_dir,"dev.src.ids")
-  data_to_token_ids(to_dev_path, to_dev_ids_path, to_vocab_path, tokenizer)
-  data_to_token_ids(from_dev_path, from_dev_ids_path, from_vocab_path, tokenizer)
+  if preprocess_data:
+    data_to_token_ids(to_dev_path, to_dev_ids_path, to_vocab_path, tokenizer)
+    data_to_token_ids(from_dev_path, from_dev_ids_path, from_vocab_path, tokenizer)
 
   return (from_train_ids_path, to_train_ids_path,
           from_dev_ids_path, to_dev_ids_path,
