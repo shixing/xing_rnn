@@ -124,7 +124,7 @@ model/{model_id}/
 	saved_model/
 		train.summary/
 	decode_output/
-a		{decode_id}.output
+		{decode_id}.output
 		{decode_id}.bleu
 		{decode_id}/
 			test.src.id
@@ -134,6 +134,11 @@ a		{decode_id}.output
 
 ## Attention
 
+## Dropout
+
+For encoder, dropout happens at the input of each LSTM layers. 
+For decoder, dropout happens at the input of each LSTM layers. Additionally, we will also dropout the output of the top LSTM layer. 
+For attention layer, we do not do any dropouts at either the input or output. 
 
 ## Bucket sizes
 
@@ -175,44 +180,55 @@ In this section, a baseline model (2 layer with 200 hidden states) is trained on
 NOTE:
 
 1. In "N00001", each digit represents the device placement of the following layers: [Input layer@GPU0, LSTM layer 1@GPU0, LSTM layer 2@GPU0, Attention layer@GPU0, Softmax layer@**GPU1**]
-2. Due to the legacy reason, the speed here is **target words per second**. However, our current code will  report **source + target words per second** 
+2. The speed here is **source + target words per second**.
 
-| Hyperparameter | Changed value | Baseline value | Speed (word/s) | GPU0 (MB) | GPU1 (MB) | 
+ | Hyperparameter | Changed value | Baseline value | Speed (word) | GPU0 (MB) | GPU1 (MB) | 
 |---|---|---|---|---|---|
- |  |  |  | 900 | 612 | 2150 | 
- | Batch size | 64 | 32 | 1500 | 612 | 2150 | 
- | Batch size | 128 | 32 | 2500 | 1124 | 4198 | 
- | Hidden size | 400 | 32 | 730 | 2148 | 4198 | 
- | Buckets | 2 | 1 | 1350 | 612 | 2150 | 
- | Buckets | 4 | 1 | 1750 | 612 | 2150 | 
- | Buckets | 8 | 1 | 1900 | 612 | 2150 | 
- | Max length | 100 | 50 | 520 | 1124 | 4198 | 
- | Source vocab | 10000 | 40000 | 900 | 612 | 2150 | 
- | Target vocab | 50000 | 40000 | 800 | 612 | 4198 | 
- | Optimizor | SGD | Adagrad | 900 | 614 | 2150 | 
- | Softmax | Sampled 500 | Full-softmax | 1450 | 612 | 131 | 
- | Device placement | N00000 | N00001 | 730 | 2150 | 62 | 
- | Attention | Non-attention | Additive | 1000 | 356 | 2150 | 
- | Attention | Non-attention + N00000 | Additive | 930 | 2150 | 62 | 
+ | Baseline |  |  | 1890 | 612 | 2150 | 
+ | Batch size | 64 | 32 | 3150 | 612 | 2150 | 
+ | Batch size | 128 | 32 | 5250 | 1124 | 4198 | 
+ | Hidden size | 400 | 32 | 1533 | 2148 | 4198 | 
+ | Buckets | 2 | 1 | 2835 | 612 | 2150 | 
+ | Buckets | 4 | 1 | 3675 | 612 | 2150 | 
+ | Buckets | 8 | 1 | 3990 | 612 | 2150 | 
+ | Max length | 100 | 50 | 1092 | 1124 | 4198 | 
+ | Source vocab | 10000 | 40000 | 1890 | 612 | 2150 | 
+ | Target vocab | 50000 | 40000 | 1680 | 612 | 4198 | 
+ | Optimizor | SGD | Adagrad | 1890 | 614 | 2150 | 
+ | Softmax | Sampled 500 | Full-softmax | 3045 | 612 | 131 | 
+ | Device placement | N00000 | N00001 | 1533 | 2150 | 62 | 
+ | Attention | Non-attention | Additive | 2100 | 356 | 2150 | 
+ | Attention | Non-attention + N00000 | Additive | 1953 | 2150 | 62 | 
+ | Dynamic RNN | dynamic_rnn | static_rnn | 2400 | 356 | 742 | 
+
+
+
 
 ### Large Settings
-Several large scale models (2 layers, 40k target vocab , max length 50, additive attention) are trained on a 4 K80 GPUs machine. The speed here is still **target words per second**.
+Several large scale models (2 layers, 40k target vocab , max length 50, additive attention, batch size 128) are trained on a 4 K80 GPUs machine. The speed here is still **source + target words per second**.
 
 One important observation is that we should put LSTM layer 2 and attention layer on the same GPU to get better speed(compare row 3 vs 4).
 
-| Source Vocab | Hidden Size | Buckets | Device Placement | Speed | GPU0 | GPU1 | GPU2 | GPU3 | 
-|---|---|---|---|---|---|---|---|---|
- | 40k | 200 | 1 | N00000 | 2700 | 4198 | 62 | 62 | 62 | 
- | 40k | 200 | 1 | N00001 | 3300 | 1124 | 2150 | 62 | 62 | 
- | 40k | 200 | 1 | N00012 | 2900 | 612 | 1123 | 2150 | 62 | 
- | 40k | 200 | 1 | N00112 | 3150 | 356 | 1123 | 2150 | 62 | 
- | 200k | 1000 | 1 | N01223 | 1100 | 1124 | 4198 | 8294 | 10907 | 
- | 200k | 1000 | 5 | N01223 | 2280 | 1124 | 4198 | 8294 | 10907 | 
- | 200k | 1000 | 5 | N00001 | 2100 | 8294 | 10907 | 62 | 62 | 
+| RNN | Source Vocab | Hidden size | Buckets | Device Placement | Speed | GPU0 | GPU1 | GPU2 | GPU3 | 
+|---|---|---|---|---|---|---|---|---|---|
+ | static_rnn | 40k | 200 | 1 | N00000 | 5400 | 4198 | 62 | 62 | 62 | 
+ | static_rnn | 40k | 200 | 1 | N00001 | 6800 | 1124 | 2150 | 62 | 62 | 
+ | static_rnn | 40k | 200 | 1 | N00012 | 5800 | 612 | 1123 | 2150 | 62 | 
+ | static_rnn | 40k | 200 | 1 | N00112 | 6300 | 356 | 1123 | 2150 | 62 | 
+ | dynamic_rnn | 40k | 200 | 1 | N00001 | 7100 | 1124 | 2278 | 62 | 62 | 
+ | static_rnn | 200k | 1000 | 1 | N01223 | 2100 | 1124 | 4198 | 8294 | 10907 | 
+ | static_rnn | 200k | 1000 | 5 | N01223 | 4300 | 1124 | 4198 | 8294 | 10907 | 
+ | static_rnn | 200k | 1000 | 5 | N00001 | 4000 | 8294 | 10907 | 62 | 62 | 
+ | dynamic_rnn | 200k | 1000 | 5 | N00001 | 4230 | 4198 | 2150 | 62 | 62 | 
+ | dynamic_rnn | 200k | 1000 | 5 | N01223 | 4280 | 356 | 1126 | 4198 | 2150 | 
+
+
 
 # Reference
 [Tensorflow NMT](https://github.com/tensorflow/nmt)
 [Distributed Tensorflow](https://github.com/tensorflow/benchmarks/blob/master/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py)
+
+
 # TODO
 1. Layer batch normalization
 2. BPE encoding

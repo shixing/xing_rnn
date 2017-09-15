@@ -155,7 +155,7 @@ class SeqModel(object):
             if i == num_layers - 1:
                 output_keep_prob = self.dropoutRate
             device = devices[i+1]
-            encoder_cells.append(lstm_cell(device,input_keep_prob, output_keep_prob))
+            encoder_cells.append(lstm_cell(device,input_keep_prob, 1.0))
             decoder_cells.append(lstm_cell(device,input_keep_prob, output_keep_prob))
             
         self.encoder_cell = tf.contrib.rnn.MultiRNNCell(encoder_cells, state_is_tuple=True)
