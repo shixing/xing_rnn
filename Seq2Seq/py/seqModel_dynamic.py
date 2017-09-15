@@ -300,10 +300,17 @@ class SeqModel(object):
         # input target sequence has EOS, but no GO or PAD
 
 
-        source_length, target_length = self.buckets[bucket_id]
+        bucket_source_length, bucket_target_length = self.buckets[bucket_id]
 
         source_input_ids, target_input_ids,target_output_ids, target_weights = [], [], [], []
 
+        temp_source_seqs = []
+        temp_target_seqs = []
+        
+        source_length = 0
+        target_length = 0
+
+        
         for i in xrange(self.batch_size):
             if start_id == None:
                 source_seq, target_seq = random.choice(data_set[bucket_id])
@@ -313,7 +320,17 @@ class SeqModel(object):
                 else:
                     # in attention, if all source_seq are PAD, then the denominator of softmax will be sum(exp(-inf)) = 0, so the softmax = nan. To avoid this, we add an UNK in the source. 
                     source_seq, target_seq = [self.UNK_ID],[]
-            
+
+            temp_source_seqs.append(source_seq)
+            temp_target_seqs.append(target_seq)
+
+            if len(source_seq) > source_length:
+                source_length = len(source_seq)
+            if len(target_seq) > target_length:
+                target_length = len(target_seq)
+
+        for source_seq, target_seq in zip(temp_source_seqs, temp_target_seqs):
+                    
             source_seq =  [self.PAD_ID] * (source_length - len(source_seq)) + source_seq
             
             if len(target_seq) == 0: # for certain dev entry

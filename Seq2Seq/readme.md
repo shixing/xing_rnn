@@ -140,11 +140,24 @@ For encoder, dropout happens at the input of each LSTM layers.
 For decoder, dropout happens at the input of each LSTM layers. Additionally, we will also dropout the output of the top LSTM layer. 
 For attention layer, we do not do any dropouts at either the input or output. 
 
+## Dynamic RNN
+By default, the code will use `tf.nn.dynamic_rnn`. It's about 15% faster and can reduce the memory usage on GPU by 50%, thanks to the `swap_memory` option.
+
+You can choose to use `tf.nn.static_rnn` by setting the flag `dynamic_rnn = False`. 
+
 ## Bucket sizes
-
 `max_source_length` = max source length
-
 `max_target_length` = max target length + 1 (due to _GO and _EOS)
+
+If we use  `tf.nn.dynamic_rnn`, we do not need to create a seperate seq2seq model for each bucket. However, we still need the bucket mechanism to find similar length pairs to form in a batch. 
+
+Here is how we find similar length sentences into a batch: 
+1. Hash the pair into buckets according to each bucket's source length and target length. 
+2. To form a batch, we randomly choose a bucket, and then randomly select `batch_size` pairs as a batch. 
+3. Calculate the actual max source length and max target length in that batch. Then we pad each pair in the batch to make sure every pair in a batch have the same length. 
+
+
+
 
 ## Multi-GPU support 
 ### Model parallel
@@ -176,6 +189,7 @@ In this section, a baseline model (2 layer with 200 hidden states) is trained on
 4. Double the **maximum length** of both source side and target side will double the memory consumptions.
 5. **Target vocab size** affects both speed and memory consumption heavily.
 6. Putting softmax layer on another GPU will speed up the whole training. 
+7. **Alwahys use dynamic_rnn, faster and less memory usage.**
 
 NOTE:
 
