@@ -15,7 +15,6 @@ import logging
 from logging_helper import mylog, mylog_section, mylog_subsection, mylog_line
 
 import data_utils
-from seqModel import SeqModel
 
 import data_iterator
 from data_iterator import DataIterator
@@ -116,6 +115,8 @@ tf.app.flags.DEFINE_float("min_ratio", 0.5, "min ratio: the output should be at 
 tf.app.flags.DEFINE_float("max_ratio", 1.5, "max ratio: the output should be at most source_length*max_ratio long")
 tf.app.flags.DEFINE_boolean("load_from_best", True, "whether to load best model to decode. If False, it will load the last model saved.")
 
+# dynamic_rnn
+tf.app.flags.DEFINE_boolean("dynamic_rnn", True, "whether to use dynamic_rnn instead of static_rnn.")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -240,6 +241,12 @@ def create_model(session, run_options, run_metadata):
     initializer = None
     if FLAGS.p != 0.0:
         initializer = tf.random_uniform_initializer(-FLAGS.p,FLAGS.p)
+
+    if FLAGS.dynamic_rnn:
+        from seqModel_dynamic import SeqModel
+    else:
+        from seqModel import SeqModel
+    
     with tf.variable_scope("v0",initializer = initializer):
         model = SeqModel(FLAGS._buckets,
                          FLAGS.size,
@@ -714,7 +721,7 @@ def beam_decode():
                 # top_value = [array[batch_size, batch_size]]
                 # top_index = [array[batch_size, batch_size]]
                 # eos_value = [array[batch_size, 1] ]
-                                        
+
                 # expand
                 global_queue = []
 

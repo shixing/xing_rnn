@@ -22,7 +22,7 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import variable_scope
 
 from variable_mgr import VariableMgrLocalReplicated
-from seqModel import SeqModel
+from seqModel_dynamic import SeqModel
 
 class SeqModelDistributed:
 
@@ -123,64 +123,59 @@ class SeqModelDistributed:
         section = "Aggregate Gradients "
         mylog_section(section)
 
-        agg_grads = []
-        
-        for b in xrange(len(buckets)):
 
-            mylog_subsection("Bucket {}".format(b))
-            
-            # for each buckets
-            gradients = [] # [[grad * n_variable] * n_model]
-            params = [] # [[param * n_variable] * n_model]
-            for model in self.models:
-                gradients.append(model.gradients[b])
-                params.append(model.params)
-                
-            agg_grad_per_gpu = {} # record how many aggregations of grads happens on eah gpu
+        agg_grads = [] # [grad * n_variable]       
 
-            agg_grads_per_bucket = []
-            
-            for param_id in xrange(len(params[0])):
-                
-                grads_per_model = []
-                params_per_model = []
+        # for each buckets
+        gradients = [] # [[grad * n_variable] * n_model]
+        params = [] # [[param * n_variable] * n_model]
 
-                for model_id in xrange(len(params)):
-                    params_per_model.append(params[model_id][param_id])
-                    grads_per_model.append(gradients[model_id][param_id])
+        for model in self.models:
+            gradients.append(model.gradients)
+            params.append(model.params)
 
-                # choose one device to do aggregation
-                device_for_agg = None
+        agg_grad_per_gpu = {} # record how many aggregations of grads happens on eah gpu
 
-                min_n_agg = 1000000
-                
-                for param in params_per_model:
-                    dev = param.device
-                    if not dev in agg_grad_per_gpu:
-                        agg_grad_per_gpu[dev] = []
-                    n_agg = len(agg_grad_per_gpu[dev])
-                    if min_n_agg > n_agg:
-                        min_n_agg = n_agg
-                        device_for_agg = dev
+        for param_id in xrange(len(params[0])):
 
-                agg_grad_per_gpu[device_for_agg].append(params[0][param_id])
-                
-                with tf.device(device_for_agg):
-                    if type(grads_per_model[0]) == tf.IndexedSlices:
-                        values = tf.concat([x.values for x in grads_per_model],0)
-                        indices = tf.concat([x.indices for x in grads_per_model],0)
-                        agg_grad = tf.IndexedSlices(values, indices)
-                    else:
-                        agg_grad = tf.add_n(grads_per_model)
-                
-                agg_grads_per_bucket.append(agg_grad)
+            grads_per_model = []
+            params_per_model = []
 
-            # show aggregation device placement
-            for device in agg_grad_per_gpu:
-                mylog("Aggregated On {}:".format(device))
-                for param in agg_grad_per_gpu[device]:
-                    mylog("\t"+param.name)
-            agg_grads.append(agg_grads_per_bucket)
+            for model_id in xrange(len(params)):
+                params_per_model.append(params[model_id][param_id])
+                grads_per_model.append(gradients[model_id][param_id])
+
+            # choose one device to do aggregation
+            device_for_agg = None
+
+            min_n_agg = 1000000
+
+            for param in params_per_model:
+                dev = param.device
+                if not dev in agg_grad_per_gpu:
+                    agg_grad_per_gpu[dev] = []
+                n_agg = len(agg_grad_per_gpu[dev])
+                if min_n_agg > n_agg:
+                    min_n_agg = n_agg
+                    device_for_agg = dev
+
+            agg_grad_per_gpu[device_for_agg].append(params[0][param_id])
+
+            with tf.device(device_for_agg):
+                if type(grads_per_model[0]) == tf.IndexedSlices:
+                    values = tf.concat([x.values for x in grads_per_model],0)
+                    indices = tf.concat([x.indices for x in grads_per_model],0)
+                    agg_grad = tf.IndexedSlices(values, indices)
+                else:
+                    agg_grad = tf.add_n(grads_per_model)
+
+            agg_grads.append(agg_grad)
+
+        # show aggregation device placement
+        for device in agg_grad_per_gpu:
+            mylog("Aggregated On {}:".format(device))
+            for param in agg_grad_per_gpu[device]:
+                mylog("\t"+param.name)
 
 
         # send the aggregated grads to each model on different gpus
@@ -189,26 +184,18 @@ class SeqModelDistributed:
 
 
         # combine losses, updates and gradients norm
-        self.losses = [] # per bucket
-        self.updates = []
+        self.updates = [] # per model
         self.gradient_norms = []
 
-        for b in xrange(len(buckets)):
-            losses = []
-            updates = []
-            gradient_norms = []
-            for i, model in enumerate(self.models):
-                losses.append(model.losses[b])
-                updates.append(model.updates[b])
-                gradient_norms.append(model.gradient_norms[b])
 
-            loss = tf.add_n(losses)
-            self.losses.append(loss)
-            self.updates.append(updates)
-            self.gradient_norms.append(gradient_norms)
-                
+        losses = [] # per model
+        for i, model in enumerate(self.models):
+            losses.append(model.losses)
+            self.updates.append(model.updates)
+            self.gradient_norms.append(model.gradient_norms)
 
-                    
+        self.losses = tf.add_n(losses)
+
         # get init ops group
         self.var_init_op = tf.global_variables_initializer()
         self.broadcast_ops = self.variable_mgr.get_post_init_ops()
@@ -252,33 +239,33 @@ class SeqModelDistributed:
         
     def step(self,session, sources_per_model, inputs_per_model, targets_per_model, target_weights_per_model, 
         bucket_id, forward_only = False):
-
+        # just ignore the bucket_id
+        
         if forward_only:
             # if forward only (usually the evaluation of the dev set), use model0's step function. The sources_per_model should be the same shape as requested by models[0].step 
             return self.models[0].step(session, sources_per_model, inputs_per_model,targets_per_model,target_weights_per_model,bucket_id, forward_only = forward_only)
         
         # sources: [] * n_models
         
-        source_length, target_length = self.buckets[bucket_id]
 
         input_feed = {}
 
         for m, sources in enumerate(sources_per_model):
-            for l in xrange(source_length):
-                input_feed[self.models[m].sources[l].name] = sources[l]
+            input_feed[self.models[m].sources.name] = sources
 
         for m in xrange(len(sources_per_model)):
             inputs = inputs_per_model[m]
             targets = targets_per_model[m]
             target_weights = target_weights_per_model[m]
-            for l in xrange(target_length):
-                input_feed[self.models[m].inputs[l].name] = inputs[l]
-                input_feed[self.models[m].targets[l].name] = targets[l]
-                input_feed[self.models[m].target_weights[l].name] = target_weights[l]
+
+            input_feed[self.models[m].inputs.name] = inputs
+            input_feed[self.models[m].targets.name] = targets
+            input_feed[self.models[m].target_weights.name] = target_weights
 
         # output_feed
-        output_feed = [self.losses[bucket_id]]
-        output_feed += [self.updates[bucket_id], self.gradient_norms[bucket_id]]
+        output_feed = []
+        output_feed.append(self.losses)
+        output_feed += [self.updates, self.gradient_norms]
 
         outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
 

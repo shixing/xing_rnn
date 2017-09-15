@@ -21,6 +21,8 @@ from tensorflow.python.ops import variable_scope
 
 import data_iterator
 
+from logging_helper import mylog, mylog_section, mylog_subsection, mylog_line
+
 
 class DeviceCellWrapper(tf.nn.rnn_cell.RNNCell):
   def __init__(self, cell, device):
@@ -71,6 +73,9 @@ class SeqModel(object):
                  ):
         """Create the model.
         """
+
+        mylog("Init SeqModel with static_rnn")
+        
         self.buckets = buckets
         self.PAD_ID = 0
         self.GO_ID = 1
@@ -106,8 +111,7 @@ class SeqModel(object):
             self.learning_rate = tf.get_variable("learning_rate", initializer = float(learning_rate), trainable=False, dtype=dtype)
             self.learning_rate_decay_op = self.learning_rate.assign(
                 self.learning_rate * learning_rate_decay_factor)
-            self.global_step = tf.get_variable("global_step", initializer = 0, trainable=False, dtype = tf.int32)
-            
+            self.global_step = tf.get_variable("global_step", initializer = 0, trainable=False, dtype = tf.int32)            
             
         # Input Layer
         with tf.device(devices[0]):
@@ -242,7 +246,7 @@ class SeqModel(object):
             self.train_vars = []
             self.beam_search_vars = []
             for var in all_vars:
-                if not var.name.startswith("beam_search"):
+                if not var.name.startswith("v0/beam_search"):
                     self.train_vars.append(var)
                 else:
                     self.beam_search_vars.append(var)
@@ -373,9 +377,7 @@ class SeqModel(object):
         losses = []
         hts = []
         logits = []
-        topk_values = []
-        topk_indexes = []
-
+        
         seq2seq_f = None
 
         if attention:
@@ -398,7 +400,7 @@ class SeqModel(object):
                     if self.with_sampled_softmax:
                         logits.append(_hts)
                     else:
-                        _logits = [ tf.add(tf.matmul(ht, tf.transpose(self.output_embedding)), self.output_bias) for ht in _hts]
+                        _logits = [ tf.add(tf.matmul(ht, self.output_embedding, transpose_b = True), self.output_bias) for ht in _hts]
                         logits.append(_logits)
 
                     if per_example_loss:
@@ -411,21 +413,10 @@ class SeqModel(object):
                                 logits[-1], targets[:target_length], weights[:target_length],
                                 softmax_loss_function=softmax_loss_function))
 
-                    topk_value, topk_index = [], []
-
-                    for _logits in logits[-1]:
-                        value, index = tf.nn.top_k(tf.nn.softmax(_logits), self.topk_n, sorted = True)
-                        topk_value.append(value)
-                        topk_index.append(index)
-                    topk_values.append(topk_value)
-                    topk_indexes.append(topk_index)
-
         self.losses = losses
         self.hts = hts
-        self.logits = logits
-        self.topk_values = topk_values
-        self.topk_indexes = topk_indexes
 
+        
     def basic_seq2seq(self, encoder_cell, decoder_cell, encoder_inputs, encoder_raws, decoder_inputs, dtype, devices = None):
     
         # initial state
@@ -546,7 +537,8 @@ class SeqModel(object):
                     x = tf.add(tf.add(tf.matmul(decoder_input, self.fi_w_x),tf.matmul(prev_h_att, self.fi_w_att)), self.fi_b)
 
                     # decoder lstm
-                    decoder_output, state = decoder_cell(x, state)
+                    with tf.variable_scope('rnn'):
+                        decoder_output, state = decoder_cell(x, state)
 
                     with tf.device(devices[-2]):
                     
@@ -646,7 +638,8 @@ class SeqModel(object):
                     x = tf.add(tf.add(tf.matmul(decoder_input, self.fi_w_x),tf.matmul(prev_h_att, self.fi_w_att)), self.fi_b)
 
                     # decoder lstm
-                    decoder_output, state = decoder_cell(x, state)
+                    with tf.variable_scope('rnn'):
+                        decoder_output, state = decoder_cell(x, state)
 
                     with tf.device(devices[-2]):
                     
@@ -996,7 +989,8 @@ class SeqModel(object):
                 x = tf.add(tf.add(tf.matmul(decoder_input, self.fi_w_x),tf.matmul(self.before_h_att, self.fi_w_att)), self.fi_b)
 
                 # decoder one-step lstm
-                decoder_output, decoder_state = decoder_cell(x, self.before_state)
+                with tf.variable_scope("rnn"):
+                  decoder_output, decoder_state = decoder_cell(x, self.before_state)
 
                 context = get_context(decoder_output) 
 
@@ -1088,7 +1082,8 @@ class SeqModel(object):
                 x = tf.add(tf.add(tf.matmul(decoder_input, self.fi_w_x),tf.matmul(self.before_h_att, self.fi_w_att)), self.fi_b)
 
                 # decoder one-step lstm
-                decoder_output, decoder_state = decoder_cell(x, self.before_state)
+                with tf.variable_scope("rnn"):
+                  decoder_output, decoder_state = decoder_cell(x, self.before_state)
 
                 context = get_context(decoder_output) 
 

@@ -14,7 +14,7 @@ import tensorflow as tf
 import logging
 from logging_helper import mylog, mylog_section, mylog_subsection, mylog_line
 import data_utils
-from seqModelDistributed import SeqModelDistributed
+
 
 import data_iterator
 from data_iterator import DataIterator
@@ -114,6 +114,9 @@ tf.app.flags.DEFINE_boolean("print_beam", False, "whether to print beam info.")
 tf.app.flags.DEFINE_float("min_ratio", 0.5, "min ratio: the output should be at least source_length*min_ratio long.")
 tf.app.flags.DEFINE_float("max_ratio", 1.5, "max ratio: the output should be at most source_length*max_ratio long")
 tf.app.flags.DEFINE_boolean("load_from_best", True, "whether to load best model to decode. If False, it will load the last model saved.")
+
+# dynamic_rnn
+tf.app.flags.DEFINE_boolean("dynamic_rnn", True, "whether to use dynamic_rnn instead of static_rnn.")
 
 
 
@@ -225,6 +228,11 @@ def create_model(session, run_options, run_metadata):
     initializer = None
     if FLAGS.p != 0.0:
         initializer = tf.random_uniform_initializer(-FLAGS.p,FLAGS.p)
+
+    if FLAGS.dynamic_rnn:
+        from seqModelDistributed_dynamic import SeqModelDistributed
+    else:
+        from seqModelDistributed import SeqModelDistributed
         
     with tf.variable_scope("",initializer = initializer):
         model = SeqModelDistributed(FLAGS._buckets,
