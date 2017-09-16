@@ -428,17 +428,19 @@ def train():
             
             # loss and time
             step_time += (time.time() - start_time) / steps_per_checkpoint
-
+            
             loss += L
             current_step += 1
             n_valid_sents += np.sum(np.sign(target_weights[0]))
-            n_valid_words += np.sum(target_weights)
+
+            # double sum because different model's target_weights has different shape
+            n_valid_words += np.sum(np.sum(target_weights))
             
             # for report
             report_time += (time.time() - start_time)
-            n_targets_report += np.sum(target_weights)
-            n_sources_report += np.sum(np.sign(source_inputs))
-
+            
+            n_targets_report += np.sum(np.sum(target_weights))
+            n_sources_report += np.sum(np.sum(np.sign(source_inputs)))
     
             if current_step % steps_per_report == 1:
                 sect_name = "STEP {}".format(current_step)
@@ -540,7 +542,7 @@ def evaluate(sess, model, data_set):
 
         loss += L
         n_steps += 1
-        n_valids += np.sum(weights)
+        n_valids += np.sum(np.sum(weights))
 
     loss = loss/(n_valids)
     ppx = math.exp(loss) if loss < 300 else float("inf")
