@@ -7,7 +7,7 @@ def main():
     j = Jobs("claim2title",hours = 10, machine_type = "gpu4")
     grids = {"name":["c2t"],
              "batch_size":[128],
-             "size": [1000],
+             "size": [500],
              "dropout":[0.8],
              "learning_rate":[1.0],
              "n_epoch":[20],
@@ -24,7 +24,9 @@ def main():
              "learning_rate_decay_factor":[0.5],
              "NN":["00000,11111,22222,33333"],
              "attention_style":["additive"],
-             "attention_scale":[False]
+             "attention_scale":[False],
+             "preprocess_data":[False],
+             "checkpoint_steps":[300]
     }
 
     beams = [12]

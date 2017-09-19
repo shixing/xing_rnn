@@ -37,7 +37,7 @@ def standalone():
     j = Jobs("claim2title_small",hours = 10, machine_type = "gpu4")
     grids = {"name":["c2tsmall"],
              "batch_size":[128],
-             "size": [1000],
+             "size": [500],
              "dropout":[0.8],
              "learning_rate":[0.5],
              "n_epoch":[20],

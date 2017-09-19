@@ -69,7 +69,8 @@ class SeqModel(object):
                  with_sampled_softmax = False,
                  attention_style = "additive",
                  attention_scale = True,
-                 standalone = True
+                 standalone = True,
+                 n_distributed_models = 1
                  ):
         """Create the model.
         """
@@ -101,7 +102,10 @@ class SeqModel(object):
         self.attention_style = attention_style
         self.attention_scale = attention_scale
         self.max_gradient_norm = max_gradient_norm
-
+        
+        self.global_batch_size = batch_size
+        if not standalone:
+          self.global_batch_size = batch_size * n_distributed_models
         
         # some parameters
         with tf.device(devices[0]):
@@ -273,8 +277,6 @@ class SeqModel(object):
 
 
     ######### Train ##########
-
-
     
     def step(self,session, sources, inputs, targets, target_weights, 
         bucket_id, forward_only = False, dump_lstm = False):
@@ -286,11 +288,13 @@ class SeqModel(object):
         for l in xrange(source_length):
             input_feed[self.sources[l].name] = sources[l]
 
+            
         for l in xrange(target_length):
             input_feed[self.inputs[l].name] = inputs[l]
             input_feed[self.targets[l].name] = targets[l]
             input_feed[self.target_weights[l].name] = target_weights[l]
 
+            
         # output_feed
         if forward_only:
             output_feed = [self.losses[bucket_id]]
@@ -302,27 +306,20 @@ class SeqModel(object):
             output_feed += [self.updates[bucket_id], self.gradient_norms[bucket_id]]
 
         outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
-
-        if forward_only and dump_lstm:
-            return outputs
+        
+        if forward_only or dump_lstm:
+            return outputs[0]
         else:
-            return outputs[0] # only return losses
+            return outputs[0], outputs[2] # only return losses, norms
 
     def get_batch(self, data_set, bucket_id, start_id = None):
         
         # input target sequence has EOS, but no GO or PAD
 
 
-        bucket_source_length, bucket_target_length = self.buckets[bucket_id]
+        source_length, target_length = self.buckets[bucket_id]
 
         source_input_ids, target_input_ids,target_output_ids, target_weights = [], [], [], []
-
-        
-        temp_source_seqs = []
-        temp_target_seqs = []
-        
-        source_length = 0
-        target_length = 0
 
         
         for i in xrange(self.batch_size):
@@ -334,17 +331,6 @@ class SeqModel(object):
                 else:
                     # in attention, if all source_seq are PAD, then the denominator of softmax will be sum(exp(-inf)) = 0, so the softmax = nan. To avoid this, we add an UNK in the source. 
                     source_seq, target_seq = [self.UNK_ID],[]
-            
-            
-            temp_source_seqs.append(source_seq)
-            temp_target_seqs.append(target_seq)
-
-            if len(source_seq) > source_length:
-                source_length = len(source_seq)
-            if len(target_seq) > target_length:
-                target_length = len(target_seq)
-
-        for source_seq, target_seq in zip(temp_source_seqs, temp_target_seqs):
           
             source_seq =  [self.PAD_ID] * (source_length - len(source_seq)) + source_seq
           
@@ -426,15 +412,9 @@ class SeqModel(object):
                         _logits = [ tf.add(tf.matmul(ht, self.output_embedding, transpose_b = True), self.output_bias) for ht in _hts]
                         logits.append(_logits)
 
-                    if per_example_loss:
-                        losses.append(sequence_loss_by_example(
-                                logits[-1], targets[:target_length], weights[:target_length],
-                                softmax_loss_function=softmax_loss_function))
-
-                    else:
-                        losses.append(sequence_loss(
-                                logits[-1], targets[:target_length], weights[:target_length],
-                                softmax_loss_function=softmax_loss_function))
+                    loss = sequence_loss(logits[-1], targets[:target_length], weights[:target_length], softmax_loss_function=softmax_loss_function)
+                    loss = loss / math_ops.cast(self.global_batch_size, loss.dtype)
+                    losses.append(loss)
 
         self.losses = losses
         self.hts = hts

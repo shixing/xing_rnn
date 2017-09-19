@@ -104,7 +104,8 @@ class SeqModelDistributed:
                         with_sampled_softmax = with_sampled_softmax,
                         attention_style = attention_style,
                         attention_scale = attention_scale,
-                        standalone = False  # ! do not init the optimizer now 
+                        standalone = False,  # ! do not init the optimizer now
+                        n_distributed_models = self.num_models
                     )
                     
                     self.models.append(seqModel)
@@ -265,14 +266,15 @@ class SeqModelDistributed:
         # output_feed
         output_feed = []
         output_feed.append(self.losses)
-        output_feed += [self.updates, self.gradient_norms]
+        if not forward_only:
+            output_feed += [self.updates, self.gradient_norms]
 
         outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
 
-        if forward_only and dump_lstm:
-            return outputs
+        if forward_only:
+            return outputs[0]
         else:
-            return outputs[0] # only return losses
+            return outputs[0], outputs[2][0] # only return losses and norm of first model 
 
     def get_batch(self, data_set, bucket_id, start_id = None):
         if start_id != None: # to evluate ppx on dev set;

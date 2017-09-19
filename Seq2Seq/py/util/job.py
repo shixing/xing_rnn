@@ -156,7 +156,17 @@ __cmd__
                 return "", "--fromScratch False"
             else:
                 return "",""
-        
+
+        def preprocess_data(val):
+            if not val:
+                return "", "--preprocess_data False"
+
+        def checkpoint_frequency(val):
+            return "", "--checkpoint_frequency {}".format(val)
+
+        def checkpoint_steps(val):
+            return "", "--checkpoint_steps {}".format(val)
+            
         
         self.keys= ["name",
                     "batch_size",
@@ -180,7 +190,10 @@ __cmd__
                     "attention_style",
                     "attention_scale",
                     "beam_size",
-                    "fromScratch"
+                    "fromScratch",
+                    "preprocess_data",
+                    "checkpoint_frequency",
+                    "checkpoint_steps"
         ]
         
         self.funcs = {"name":name,
@@ -205,54 +218,65 @@ __cmd__
                       "attention_style":attention_style,
                       "attention_scale":attention_scale,
                       "beam_size":beam_size,
-                      "fromScratch":fromScratch
+                      "fromScratch":fromScratch,
+                      "preprocess_data":preprocess_data,
+                      "checkpoint_frequency":checkpoint_frequency,
+                      "checkpoint_steps":checkpoint_steps
+
         }
 
         self.train_template = {"name":"enfr10k",
-                         "batch_size":128,
-                         "size": 200,
-                         "dropout":0.7,
-                         "learning_rate":0.5,
-                         "n_epoch":100,
-                         "num_layers":2,
-                         "attention":True,
-                         "from_vocab_size":40000,
-                         "to_vocab_size":40000,
-                         "min_source_length":0,
-                         "max_source_length":50,
-                         "min_target_length":0,
-                         "max_target_length":50,
-                         "n_bucket":1,
-                         "optimizer":"adagrad",
-                         "learning_rate_decay_factor":1.0,
-                         "N":"00000",
-                         "attention_style":"additive",
-                         "attention_scale":True,
-                               "fromScratch":True
+                               "batch_size":128,
+                               "size": 200,
+                               "dropout":0.7,
+                               "learning_rate":0.5,
+                               "n_epoch":100,
+                               "num_layers":2,
+                               "attention":True,
+                               "from_vocab_size":40000,
+                               "to_vocab_size":40000,
+                               "min_source_length":0,
+                               "max_source_length":50,
+                               "min_target_length":0,
+                               "max_target_length":50,
+                               "n_bucket":1,
+                               "optimizer":"adagrad",
+                               "learning_rate_decay_factor":1.0,
+                               "N":"00000",
+                               "attention_style":"additive",
+                               "attention_scale":True,
+                               "fromScratch":True,
+                               "preprocess_data":True,
+                               "checkpoint_frequency":2,
+                               "checkpoint_steps":0
+
                          }
 
         self.train_template_dist = {"name":"enfr10k",
-                         "batch_size":128,
-                         "size": 200,
-                         "dropout":0.7,
-                         "learning_rate":0.5,
-                         "n_epoch":100,
-                         "num_layers":2,
-                         "attention":True,
-                         "from_vocab_size":40000,
-                         "to_vocab_size":40000,
-                         "min_source_length":0,
-                         "max_source_length":50,
-                         "min_target_length":0,
-                         "max_target_length":50,
-                         "n_bucket":1,
-                         "optimizer":"adagrad",
-                         "learning_rate_decay_factor":1.0,
-                         "NN":"00000",
-                         "attention_style":"additive",
-                         "attention_scale":True,
-                        "fromScratch":True
-                         }
+                                    "batch_size":128,
+                                    "size": 200,
+                                    "dropout":0.7,
+                                    "learning_rate":0.5,
+                                    "n_epoch":100,
+                                    "num_layers":2,
+                                    "attention":True,
+                                    "from_vocab_size":40000,
+                                    "to_vocab_size":40000,
+                                    "min_source_length":0,
+                                    "max_source_length":50,
+                                    "min_target_length":0,
+                                    "max_target_length":50,
+                                    "n_bucket":1,
+                                    "optimizer":"adagrad",
+                                    "learning_rate_decay_factor":1.0,
+                                    "NN":"00000",
+                                    "attention_style":"additive",
+                                    "attention_scale":True,
+                                    "fromScratch":True,
+                                    "preprocess_data":True,
+                                    "checkpoint_frequency":2,
+                                    "checkpoint_steps":0
+        }
 
         self.decode_template = {"name":"enfr10k",
                          "size": 200,

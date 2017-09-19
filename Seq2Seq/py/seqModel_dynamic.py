@@ -74,7 +74,8 @@ class SeqModel(object):
                  attention_style = "additive",
                  attention_scale = True,
                  standalone = True,
-                 swap_memory = True
+                 swap_memory = True,
+                 n_distributed_models = 1
                  ):
         """Create the model.
         """
@@ -108,6 +109,9 @@ class SeqModel(object):
         self.max_gradient_norm = max_gradient_norm
         self.swap_memory = swap_memory
 
+        self.global_batch_size = batch_size
+        if not standalone:
+          self.global_batch_size = batch_size * n_distributed_models
         
         # some parameters
         with tf.device(devices[0]):
@@ -290,10 +294,10 @@ class SeqModel(object):
 
         outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
 
-        if forward_only and dump_lstm:
-            return outputs
+        if forward_only or dump_lstm:
+            return outputs[0]
         else:
-            return outputs[0] # only return losses
+            return outputs[0], outputs[2] # only return losses
 
     def get_batch(self, data_set, bucket_id, start_id = None):
         
@@ -390,6 +394,7 @@ class SeqModel(object):
                   
                 crossent = softmax_loss_function(logits, targets)
                 cost = math_ops.reduce_sum(crossent * weights)
+                cost = cost / math_ops.cast(self.global_batch_size, cost.dtype)
                 
         self.losses  = cost
         self.hts = _hts
@@ -527,8 +532,6 @@ class SeqModel(object):
 
     def get_batch_test(self, data_set, bucket_id, start_id = None):
 
-        source_length = self.beam_buckets[bucket_id]
-        
         word_inputs = []
         word_input_seq = []
         length = 0
@@ -540,9 +543,8 @@ class SeqModel(object):
                 if start_id + i < len(data_set[bucket_id]):
                     word_seq = data_set[bucket_id][start_id + i]
 
-            length = len(word_seq)
-            pad_seq = [self.PAD_ID] * (source_length - len(word_seq))
-            word_input_seq = pad_seq + word_seq
+            length = len(word_seq)            
+            word_input_seq = word_seq
             
         for i in xrange(self.batch_size):
             word_inputs.append(list(word_input_seq))

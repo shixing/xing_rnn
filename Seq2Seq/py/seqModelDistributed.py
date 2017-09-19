@@ -104,7 +104,8 @@ class SeqModelDistributed:
                         with_sampled_softmax = with_sampled_softmax,
                         attention_style = attention_style,
                         attention_scale = attention_scale,
-                        standalone = False  # ! do not init the optimizer now 
+                        standalone = False,  # ! do not init the optimizer now
+                        n_distributed_models = self.num_models
                     )
                     
                     self.models.append(seqModel)
@@ -251,7 +252,7 @@ class SeqModelDistributed:
         return sess.run(self.models[0].learning_rate)
         
     def step(self,session, sources_per_model, inputs_per_model, targets_per_model, target_weights_per_model, 
-        bucket_id, forward_only = False):
+             bucket_id, forward_only = False):
 
         if forward_only:
             # if forward only (usually the evaluation of the dev set), use model0's step function. The sources_per_model should be the same shape as requested by models[0].step 
@@ -278,14 +279,17 @@ class SeqModelDistributed:
 
         # output_feed
         output_feed = [self.losses[bucket_id]]
-        output_feed += [self.updates[bucket_id], self.gradient_norms[bucket_id]]
+        
+        if not forward_only:
+            output_feed += [self.updates[bucket_id], self.gradient_norms[bucket_id]]
 
         outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
 
-        if forward_only and dump_lstm:
-            return outputs
+
+        if forward_only:
+            return outputs[0]
         else:
-            return outputs[0] # only return losses
+            return outputs[0], outputs[2][0] # only return losses and norm of first model
 
     def get_batch(self, data_set, bucket_id, start_id = None):
         if start_id != None: # to evluate ppx on dev set;

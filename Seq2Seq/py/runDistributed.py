@@ -121,6 +121,12 @@ tf.app.flags.DEFINE_boolean("dynamic_rnn", True, "whether to use dynamic_rnn ins
 # data_prepocess
 tf.app.flags.DEFINE_boolean("preprocess_data", True, "whether to preprocess data. Default: True.")
 
+# checkpoint
+tf.app.flags.DEFINE_integer("checkpoint_frequency", 2, "How many checkpoints in one epoch")
+tf.app.flags.DEFINE_integer("checkpoint_steps", 0, "How many steps between checkpoints, if 0, checkpoint setting will follow checkpoint_frequency")
+
+
+
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -337,7 +343,11 @@ def train():
     n_epoch = FLAGS.n_epoch
     steps_per_epoch = int(train_total_size / batch_size / FLAGS.num_models)
     steps_per_dev = int(dev_total_size / batch_size)
-    steps_per_checkpoint = int(steps_per_epoch / 2)
+    if FLAGS.checkpoint_steps == 0:
+        steps_per_checkpoint = int(steps_per_epoch / FLAGS.checkpoint_frequency)
+    else:
+        steps_per_checkpoint = FLAGS.checkpoint_steps
+        
     total_steps = steps_per_epoch * n_epoch
 
     # reports
@@ -424,7 +434,7 @@ def train():
             source_inputs, target_inputs, target_outputs, target_weights, bucket_id = ite.next()
             
             
-            L = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id)
+            L, norm = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id)
             
             # loss and time
             step_time += (time.time() - start_time) / steps_per_checkpoint
@@ -465,6 +475,7 @@ def train():
                 i_checkpoint = int(current_step / steps_per_checkpoint)
                 
                 # train_ppx
+                loss = loss * FLAGS.batch_size * FLAGS.num_models 
                 loss = loss / n_valid_words
                 train_ppx = math.exp(float(loss)) if loss < 300 else float("inf")
                 learning_rate = model.get_learning_rate(sess)
@@ -475,7 +486,7 @@ def train():
 
                 # report
                 sect_name = "CHECKPOINT {} STEP {}".format(i_checkpoint, current_step)
-                msg = "Learning_rate: {:.4f} Dev_ppx: {:.4f} Train_ppx: {:.4f}".format(learning_rate, dev_ppx, train_ppx)
+                msg = "Learning_rate: {:.4f} Dev_ppx: {:.4f} Train_ppx: {:.4f} Norm: {:.4f}".format(learning_rate, dev_ppx, train_ppx, norm)
                 mylog_line(sect_name, msg)
 
                 if FLAGS.with_summary:
@@ -544,7 +555,7 @@ def evaluate(sess, model, data_set):
         n_steps += 1
         n_valids += np.sum(np.sum(weights))
 
-    loss = loss/(n_valids)
+    loss = loss/(n_valids) * FLAGS.batch_size * FLAGS.num_models
     ppx = math.exp(loss) if loss < 300 else float("inf")
 
     sess.run(model.dropoutAssign_ops)
