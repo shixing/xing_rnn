@@ -160,6 +160,8 @@ __cmd__
         def preprocess_data(val):
             if not val:
                 return "", "--preprocess_data False"
+            else:
+                return "",""
 
         def checkpoint_frequency(val):
             return "", "--checkpoint_frequency {}".format(val)

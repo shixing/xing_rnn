@@ -8,8 +8,8 @@ def standalone():
     grids = {"name":["small"],
              "batch_size":[4],
              "size": [100],
-             "dropout":[0.7, 0.5],
-             "learning_rate":[0.1],
+             "dropout":[0.7],
+             "learning_rate":[0.001],
              "n_epoch":[100],
              "num_layers":[2],
              "attention":[True],
@@ -20,9 +20,10 @@ def standalone():
              "min_target_length":[0],
              "max_target_length":[22],
              "n_bucket":[2],
-             "optimizer":["adagrad"],
+             "optimizer":["adam"],
+             "learning_rate_decay_factor":[1.0],
              "N":["00000"],
-             "attention_style":["additive",'multiply'],
+             "attention_style":["additive"],
              "attention_scale":[False]
     }
     
@@ -38,7 +39,7 @@ def distributed():
              "batch_size":[4],
              "size": [100],
              "dropout":[0.7],
-             "learning_rate":[0.1],
+             "learning_rate":[0.001,0.004],
              "n_epoch":[100],
              "num_layers":[2],
              "attention":[True],
@@ -49,7 +50,8 @@ def distributed():
              "min_target_length":[0],
              "max_target_length":[22],
              "n_bucket":[2],
-             "optimizer":["adagrad"],
+             "optimizer":["adam"],
+             "learning_rate_decay_factor":[1.0],
              "NN":["00000,11111,22222,33333"],
              "attention_style":["additive"],
              "attention_scale":[False]
