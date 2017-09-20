@@ -113,7 +113,7 @@ class SeqModel(object):
         if not standalone:
             self.global_batch_size = batch_size * n_distributed_models
 
-        self.fisrt_batch = True
+        self.first_batch = True
           
           
         # some parameters
@@ -307,7 +307,7 @@ class SeqModel(object):
         # input target sequence has EOS, but no GO or PAD
         if self.first_batch:
             self.first_batch = False
-            return self.get_batch_max(data_set)
+            return self.get_batch_max(data_set, bucket_id, start_id = None)
 
         bucket_source_length, bucket_target_length = self.buckets[bucket_id]
 
@@ -372,7 +372,7 @@ class SeqModel(object):
         return source_input_ids, target_input_ids, target_output_ids, target_weights, finished
 
 
-    def get_batch_max(self, data_set):
+    def get_batch_max(self, data_set, bucket_id, start_id = None):
         
         # get the largest batch possible to test how much memory we will need. 
 

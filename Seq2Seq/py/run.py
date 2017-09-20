@@ -180,8 +180,8 @@ def read_data(source_path, target_path, max_size=None):
         if counter % 100000 == 0:
           print("  reading data line %d" % counter)
           sys.stdout.flush()
-        source_ids = [int(x) for x in source.split()][::-1]
-        target_ids = [int(x) for x in target.split()]
+        source_ids = np.fromstring(source,dtype=int,sep=' ').tolist()[::-1]
+        target_ids = np.fromstring(target,dtype=int,sep=' ').tolist()
         target_ids.append(data_utils.EOS_ID)
         for bucket_id, (source_size, target_size) in enumerate(_buckets):
           if len(source_ids) <= source_size and len(target_ids) <= target_size:
