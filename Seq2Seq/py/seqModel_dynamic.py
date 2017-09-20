@@ -111,8 +111,11 @@ class SeqModel(object):
 
         self.global_batch_size = batch_size
         if not standalone:
-          self.global_batch_size = batch_size * n_distributed_models
-        
+            self.global_batch_size = batch_size * n_distributed_models
+
+        self.fisrt_batch = True
+          
+          
         # some parameters
         with tf.device(devices[0]):
             self.dropoutRate = tf.get_variable('dropoutRate',initializer = float(dropoutRate), trainable=False, dtype=dtype)        
@@ -302,7 +305,9 @@ class SeqModel(object):
     def get_batch(self, data_set, bucket_id, start_id = None):
         
         # input target sequence has EOS, but no GO or PAD
-
+        if self.first_batch:
+            self.first_batch = False
+            return self.get_batch_max(data_set)
 
         bucket_source_length, bucket_target_length = self.buckets[bucket_id]
 
@@ -322,8 +327,11 @@ class SeqModel(object):
                 if start_id + i < len(data_set[bucket_id]):
                     source_seq, target_seq = data_set[bucket_id][start_id + i]
                 else:
-                    # in attention, if all source_seq are PAD, then the denominator of softmax will be sum(exp(-inf)) = 0, so the softmax = nan. To avoid this, we add an UNK in the source. 
-                    source_seq, target_seq = [self.UNK_ID],[]
+                    source_seq, target_seq = [],[]
+
+            if len(source_seq) == 0:
+                # in attention, if all source_seq are PAD, then the denominator of softmax will be sum(exp(-inf)) = 0, so the softmax = nan. To avoid this, we add an UNK in the source.
+                source_seq = [self.UNK_ID]
 
             temp_source_seqs.append(source_seq)
             temp_target_seqs.append(target_seq)
@@ -334,6 +342,56 @@ class SeqModel(object):
                 target_length = len(target_seq)
 
         for source_seq, target_seq in zip(temp_source_seqs, temp_target_seqs):
+                    
+            source_seq =  [self.PAD_ID] * (source_length - len(source_seq)) + source_seq
+            
+            if len(target_seq) == 0: # for certain dev entry
+                target_input_seq = []
+                target_output_seq = []
+            else:
+                target_input_seq = [self.GO_ID] + target_seq[:-1]
+                target_output_seq = target_seq
+
+                
+            target_weight = [1.0] * len(target_output_seq) + [0.0] * (target_length - len(target_output_seq))
+            target_input_seq = target_input_seq + [self.PAD_ID] * (target_length - len(target_input_seq))
+            target_output_seq = target_output_seq + [self.PAD_ID] * (target_length - len(target_output_seq))
+
+            source_input_ids.append(source_seq)
+            target_input_ids.append(target_input_seq)
+            target_output_ids.append(target_output_seq)
+            target_weights.append(target_weight)
+            
+        # Now we create batch-major vectors from the data selected above.
+        
+        finished = False
+        if start_id != None and start_id + self.batch_size >= len(data_set[bucket_id]):
+            finished = True
+
+
+        return source_input_ids, target_input_ids, target_output_ids, target_weights, finished
+
+
+    def get_batch_max(self, data_set):
+        
+        # get the largest batch possible to test how much memory we will need. 
+
+        source_length, target_length = self.buckets[-1]
+
+        source_input_ids, target_input_ids,target_output_ids, target_weights = [], [], [], []
+        
+        for i in xrange(self.batch_size):
+            if start_id == None:
+                source_seq, target_seq = random.choice(data_set[bucket_id])
+            else:
+                if start_id + i < len(data_set[bucket_id]):
+                    source_seq, target_seq = data_set[bucket_id][start_id + i]
+                else:
+                    source_seq, target_seq = [],[]
+
+            if len(source_seq) == 0:
+                # in attention, if all source_seq are PAD, then the denominator of softmax will be sum(exp(-inf)) = 0, so the softmax = nan. To avoid this, we add an UNK in the source.
+                source_seq = [self.UNK_ID]
                     
             source_seq =  [self.PAD_ID] * (source_length - len(source_seq)) + source_seq
             
@@ -395,7 +453,8 @@ class SeqModel(object):
                 crossent = softmax_loss_function(logits, targets)
                 cost = math_ops.reduce_sum(crossent * weights)
                 cost = cost / math_ops.cast(self.global_batch_size, cost.dtype)
-                
+
+        self.logits = logits
         self.losses  = cost
         self.hts = _hts
 

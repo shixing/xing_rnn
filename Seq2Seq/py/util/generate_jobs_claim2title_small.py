@@ -7,7 +7,7 @@ def distributed():
     j = Jobs("claim2title_small",hours = 10, machine_type = "gpu4")
     grids = {"name":["c2tsmall"],
              "batch_size":[3],
-             "size": [1000],
+             "size": [500],
              "dropout":[0.8],
              "learning_rate":[1.0],
              "n_epoch":[20],

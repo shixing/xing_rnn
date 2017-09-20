@@ -26,6 +26,8 @@ from google.protobuf import text_format
 
 from state import StateWrapper
 
+from tensorflow.python import debug as tf_debug
+from customize_debug import has_nan
 
 ############################
 ######## MARK:FLAGS ########
@@ -124,6 +126,9 @@ tf.app.flags.DEFINE_boolean("preprocess_data", True, "whether to preprocess data
 # checkpoint
 tf.app.flags.DEFINE_integer("checkpoint_frequency", 2, "How many checkpoints in one epoch")
 tf.app.flags.DEFINE_integer("checkpoint_steps", 0, "How many steps between checkpoints, if 0, checkpoint setting will follow checkpoint_frequency")
+
+# debug
+tf.app.flags.DEFINE_boolean("debug", False, "whether to debug.")
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -388,6 +393,13 @@ def train():
         mylog("Creating Model.. (this can take a few minutes)")
         model = create_model(sess, run_options, run_metadata)
 
+
+        if FLAGS.debug:
+            mylog("Start Debug")
+            sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+            sess.add_tensor_filter("has_nan", has_nan)
+
+        
         if FLAGS.with_summary:
             mylog("Creating ModelSummary")
             modelSummary = ModelSummary()
@@ -436,7 +448,16 @@ def train():
             # data and train
             source_inputs, target_inputs, target_outputs, target_weights, bucket_id = ite.next()
 
+            
             L, norm = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id)
+
+            #if np.isnan(L):
+            #    print(logits)
+            #    np.savetxt("logits.npz",logits)
+            #    np.savetxt("targets.npz",target_outputs)
+            #    return 
+                
+            #print(L, norm)
             
             # loss and time
             step_time += (time.time() - start_time) / steps_per_checkpoint

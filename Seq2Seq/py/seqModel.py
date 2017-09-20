@@ -329,9 +329,12 @@ class SeqModel(object):
                 if start_id + i < len(data_set[bucket_id]):
                     source_seq, target_seq = data_set[bucket_id][start_id + i]
                 else:
-                    # in attention, if all source_seq are PAD, then the denominator of softmax will be sum(exp(-inf)) = 0, so the softmax = nan. To avoid this, we add an UNK in the source. 
-                    source_seq, target_seq = [self.UNK_ID],[]
-          
+                    source_seq, target_seq = [],[]
+            
+            if len(source_seq) == 0:
+                # in attention, if all source_seq are PAD, then the denominator of softmax will be sum(exp(-inf)) = 0, so the softmax = nan. To avoid this, we add an UNK in the source.
+                source_seq = [self.UNK_ID]
+              
             source_seq =  [self.PAD_ID] * (source_length - len(source_seq)) + source_seq
           
             if len(target_seq) == 0: # for certain dev entry
