@@ -103,7 +103,7 @@ tf.app.flags.DEFINE_string("NN", "00001,22223", "Each (num_layer+3) digits repre
 tf.app.flags.DEFINE_boolean("profile", False, "Whether to profile the timing and device placement. It's better to turn this option on for really small model, as it will slow the speed significantly.")
 
 # GPU configuration
-tf.app.flags.DEFINE_boolean("allow_growth", False, "allow growth means tensorflow will not occupy all the memory of each GPU")
+tf.app.flags.DEFINE_boolean("allow_growth", True, "allow growth means tensorflow will not occupy all the memory of each GPU")
 
 # Summary
 tf.app.flags.DEFINE_boolean("with_summary", False, "whether to run the training with summary writer. If yes, the summary will be stored in folder /model/{model_id}/saved_model/train.summary. You can use tensorboard to access this.")
@@ -177,8 +177,8 @@ def read_data(source_path, target_path, max_size=None):
         if counter % 100000 == 0:
           print("  reading data line %d" % counter)
           sys.stdout.flush()
-        source_ids = [int(x) for x in source.split()][::-1]
-        target_ids = [int(x) for x in target.split()]
+        source_ids = np.fromstring(source,dtype=int,sep=' ').tolist()[::-1]
+        target_ids = np.fromstring(target,dtype=int,sep=' ').tolist()
         target_ids.append(data_utils.EOS_ID)
         for bucket_id, (source_size, target_size) in enumerate(_buckets):
           if len(source_ids) <= source_size and len(target_ids) <= target_size:
@@ -410,6 +410,7 @@ def train():
         
         # statistics during training
         step_time, loss = 0.0, 0.0
+        get_batch_time = 0.0
         current_step = 0
         previous_losses = []
         low_ppx = float("inf")
@@ -432,7 +433,8 @@ def train():
             
             # data and train
             source_inputs, target_inputs, target_outputs, target_weights, bucket_id = ite.next()
-            
+
+            get_batch_time += (time.time() - start_time) / steps_per_checkpoint
             
             L, norm = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id)
             
@@ -454,7 +456,7 @@ def train():
     
             if current_step % steps_per_report == 1:
                 sect_name = "STEP {}".format(current_step)
-                msg = "StepTime: {:.4f} sec Speed: {:.4f} words/s Total_words: {}".format(report_time/steps_per_report, (n_sources_report+n_targets_report)*1.0 / report_time, train_n_tokens)
+                msg = "StepTime: {:.4f} sec Speed: {:.4f} words/s Total_words: {} get_batch_time_ratio: {:.4f}".format(report_time/steps_per_report, (n_sources_report+n_targets_report)*1.0 / report_time, train_n_tokens, get_batch_time / step_time)
                 mylog_line(sect_name,msg)
 
                 report_time = 0
@@ -530,7 +532,8 @@ def train():
 
                 # Save checkpoint and zero timer and loss.
                 step_time, loss, n_valid_sents, n_valid_words = 0.0, 0.0, 0, 0
-                
+                get_batch_time = 0
+
 
 
 def evaluate(sess, model, data_set):
