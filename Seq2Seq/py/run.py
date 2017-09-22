@@ -180,8 +180,15 @@ def read_data(source_path, target_path, max_size=None):
         if counter % 100000 == 0:
           print("  reading data line %d" % counter)
           sys.stdout.flush()
-        source_ids = np.fromstring(source,dtype=int,sep=' ').tolist()[::-1]
-        target_ids = np.fromstring(target,dtype=int,sep=' ').tolist()
+        if source.strip() == '':
+            source_ids = []
+        else:
+            source_ids = np.fromstring(source,dtype=int,sep=' ').tolist()[::-1]
+        if target.strip() == '':
+            target_ids = []
+        else:
+            target_ids = np.fromstring(target,dtype=int,sep=' ').tolist()
+
         target_ids.append(data_utils.EOS_ID)
         for bucket_id, (source_size, target_size) in enumerate(_buckets):
           if len(source_ids) <= source_size and len(target_ids) <= target_size:
@@ -243,13 +250,6 @@ def show_all_variables():
     all_vars = tf.global_variables()
     for var in all_vars:
         mylog(var.name+" @ "+var.device)
-
-
-def log_flags():
-    members = FLAGS.__dict__['__flags'].keys()
-    mylog_section("FLAGS")
-    for attr in members:
-        mylog("{}={}".format(attr, getattr(FLAGS, attr)))
 
 
 def create_model(session, run_options, run_metadata):
@@ -455,13 +455,7 @@ def train():
 
             get_batch_time += (time.time() - start_time) / steps_per_checkpoint
             
-            L, norm = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id)
-
-            #if np.isnan(L):
-            #    print(logits)
-            #    np.savetxt("logits.npz",logits)
-            #    np.savetxt("targets.npz",target_outputs)
-            #    return 
+            L, norm = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id)            
                 
             #print(L, norm)
             
@@ -942,45 +936,49 @@ def mkdir(path):
         os.mkdir(path)
 
 
-def parsing_flags():
+def log_flags(_FLAGS):
+    members = _FLAGS.__dict__['__flags'].keys()
+    mylog_section("FLAGS")
+    for attr in members:
+        mylog("{}={}".format(attr, getattr(_FLAGS, attr)))
+
+
+
+
+def parsing_flags(_FLAGS):
     # saved_model
 
-    FLAGS.data_cache_dir = os.path.join(FLAGS.model_dir, "data_cache")
-    FLAGS.saved_model_dir = os.path.join(FLAGS.model_dir, "saved_model")
-    FLAGS.decode_output_dir = os.path.join(FLAGS.model_dir, "decode_output")
-    FLAGS.summary_dir = FLAGS.saved_model_dir
+    _FLAGS.data_cache_dir = os.path.join(_FLAGS.model_dir, "data_cache")
+    _FLAGS.saved_model_dir = os.path.join(_FLAGS.model_dir, "saved_model")
+    _FLAGS.decode_output_dir = os.path.join(_FLAGS.model_dir, "decode_output")
+    _FLAGS.summary_dir = _FLAGS.saved_model_dir
 
-    mkdir(FLAGS.model_dir)
-    mkdir(FLAGS.data_cache_dir)
-    mkdir(FLAGS.saved_model_dir)
-    mkdir(FLAGS.summary_dir)
-    mkdir(FLAGS.decode_output_dir)
+    mkdir(_FLAGS.model_dir)
+    mkdir(_FLAGS.data_cache_dir)
+    mkdir(_FLAGS.saved_model_dir)
+    mkdir(_FLAGS.summary_dir)
+    mkdir(_FLAGS.decode_output_dir)
 
-    if FLAGS.mode == "BEAM_DECODE":
-        FLAGS.decode_output_id = FLAGS.decode_output.split("/")[-1].split(".")[0]
-        FLAGS.decode_output_test_id_dir = os.path.join(FLAGS.decode_output_dir, FLAGS.decode_output_id)
-        mkdir(FLAGS.decode_output_test_id_dir)
-        log_path = os.path.join(FLAGS.model_dir,"log.{}.{}.txt".format(FLAGS.mode, FLAGS.decode_output_id))
-        
-    else:
-        log_path = os.path.join(FLAGS.model_dir,"log.{}.txt".format(FLAGS.mode))
-        
-    filemode = 'w' if FLAGS.fromScratch else "a"
+    # for logs
+    log_path = os.path.join(_FLAGS.model_dir,"log.{}.txt".format(_FLAGS.mode))
+    filemode = 'w' if _FLAGS.fromScratch else "a"
     logging.basicConfig(filename=log_path,level=logging.DEBUG, filemode = filemode, format="%(asctime)s %(threadName)-10s %(message)s",datefmt='%m/%d/%Y %I:%M:%S')
     
-    FLAGS.beam_search = False
+    _FLAGS.beam_search = False
 
-    log_flags()
+    _FLAGS.num_models = len(_FLAGS.NN.split(","))
+    
+
+    log_flags(_FLAGS)
 
     
  
 def main(_):
     
-    parsing_flags()
+    parsing_flags(FLAGS)
     
     if FLAGS.mode == "TRAIN":
         train()
-
 
     # not ready yet
     if FLAGS.mode == 'FORCE_DECODE':

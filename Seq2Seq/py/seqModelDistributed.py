@@ -282,9 +282,8 @@ class SeqModelDistributed:
         
         if not forward_only:
             output_feed += [self.updates[bucket_id], self.gradient_norms[bucket_id]]
-
+            
         outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
-
 
         if forward_only:
             return outputs[0]

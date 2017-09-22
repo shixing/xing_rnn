@@ -130,100 +130,14 @@ tf.app.flags.DEFINE_integer("checkpoint_steps", 0, "How many steps between check
 
 FLAGS = tf.app.flags.FLAGS
 
+from run import get_buckets, log_flags, get_device_address, dump_graph, show_all_variables, get_buckets, read_data, mkdir, parsing_flags
+
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
 #_buckets = [(5, 10), (10, 15), (20, 25), (40, 50)]
 
-
-def get_buckets(mins,maxs,mint,maxt,n):
-    step_source = int((maxs-mins)/n)
-    step_target = int((maxt-mint)/n)
-    start_source = maxs
-    start_target = maxt
-    buckets = []
-    for i in xrange(n):
-        buckets.append((start_source,start_target))
-        start_source -= step_source
-        start_target -= step_target
-    buckets = sorted(buckets, key=lambda x:x[0])
-    return buckets
-
 _buckets = get_buckets(FLAGS.min_source_length, FLAGS.max_source_length, FLAGS.min_target_length,FLAGS.max_target_length, FLAGS.n_bucket)
 _beam_buckets = [x[0] for x in _buckets]
-
-
-def read_data(source_path, target_path, max_size=None):
-  """Read data from source and target files and put into buckets.
-  Args:
-    source_path: path to the files with token-ids for the source language.
-    target_path: path to the file with token-ids for the target language;
-      it must be aligned with the source file: n-th line contains the desired
-      output for n-th line from the source_path.
-    max_size: maximum number of lines to read, all other will be ignored;
-      if 0 or None, data files will be read completely (no limit).
-  Returns:
-    data_set: a list of length len(_buckets); data_set[n] contains a list of
-      (source, target) pairs read from the provided data files that fit
-      into the n-th bucket, i.e., such that len(source) < _buckets[n][0] and
-      len(target) < _buckets[n][1]; source and target are lists of token-ids.
-  """
-  data_set = [[] for _ in _buckets]
-  with tf.gfile.GFile(source_path, mode="r") as source_file:
-    with tf.gfile.GFile(target_path, mode="r") as target_file:
-      source, target = source_file.readline(), target_file.readline()
-      counter = 0
-      while source and target and (not max_size or counter < max_size):
-        counter += 1
-        if counter % 100000 == 0:
-          print("  reading data line %d" % counter)
-          sys.stdout.flush()
-        source_ids = np.fromstring(source,dtype=int,sep=' ').tolist()[::-1]
-        target_ids = np.fromstring(target,dtype=int,sep=' ').tolist()
-        target_ids.append(data_utils.EOS_ID)
-        for bucket_id, (source_size, target_size) in enumerate(_buckets):
-          if len(source_ids) <= source_size and len(target_ids) <= target_size:
-            data_set[bucket_id].append([source_ids, target_ids])
-            break
-        source, target = source_file.readline(), target_file.readline()
-  return data_set
-
-
-
-
-
-
-
-def get_device_address(s):
-    add = []
-    if s == "":
-        for i in xrange(3):
-            add.append("/cpu:0")
-    else:
-        add = ["/gpu:{}".format(int(x)) for x in s]
-
-    return add
-
-
-def dump_graph(fn):
-    graph = tf.get_default_graph()
-    graphDef = graph.as_graph_def()
-        
-    text = text_format.MessageToString(graphDef)
-    f = open(fn,'w')
-    f.write(text)
-    f.close()
-
-def show_all_variables():
-    all_vars = tf.global_variables()
-    for var in all_vars:
-        mylog(var.name+" @ "+var.device)
-
-
-def log_flags():
-    members = FLAGS.__dict__['__flags'].keys()
-    mylog_section("FLAGS")
-    for attr in members:
-        mylog("{}={}".format(attr, getattr(FLAGS, attr)))
 
 
 def create_model(session, run_options, run_metadata):
@@ -285,17 +199,6 @@ def create_model(session, run_options, run_metadata):
     else:
         model.init_parameters_from_scratch(session)
     return model
-
-
-def test_save_and_reload():
-    config = tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)
-    config.gpu_options.allow_growth = FLAGS.allow_growth
-
-    with tf.Session(config=config) as sess:
-        model = create_model(sess, None, None)
-        model.init_parameters_from_scratch(session)
-        checkpoint_path = os.path.join(FLAGS.saved_model_dir, "model")
-        model.saver.save(sess, checkpoint_path, global_step=0, write_meta_graph = False)
         
 
 def train():
@@ -437,6 +340,7 @@ def train():
             get_batch_time += (time.time() - start_time) / steps_per_checkpoint
             
             L, norm = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id)
+
             
             # loss and time
             step_time += (time.time() - start_time) / steps_per_checkpoint
@@ -565,129 +469,13 @@ def evaluate(sess, model, data_set):
 
     return loss, ppx
 
-            
-
-
-
-def beam_decode():
-
-    mylog("Reading Data...")
-
-    from_test = None
-
-    from_vocab_path, to_vocab_path, real_vocab_size_from, real_vocab_size_to = data_utils.get_vocab_info(FLAGS.data_cache_dir)
-    
-    FLAGS._buckets = _buckets
-    FLAGS._beam_buckets = _beam_buckets
-    FLAGS.real_vocab_size_from = real_vocab_size_from
-    FLAGS.real_vocab_size_to = real_vocab_size_to
-    
-    from_test = data_utils.prepare_test_data(
-        FLAGS.data_cache_dir,
-        FLAGS.test_path_from,
-        from_vocab_path)
-
-    test_data_bucket, test_data_order, n_test_original = read_data_test(from_test)
-
-    test_bucket_sizes = [len(test_data_bucket[b]) for b in xrange(len(_beam_buckets))]
-    test_total_size = int(sum(test_bucket_sizes))
-
-    # reports
-    mylog("from_vocab_size: {}".format(FLAGS.from_vocab_size))
-    mylog("to_vocab_size: {}".format(FLAGS.to_vocab_size))
-    mylog("_beam_buckets: {}".format(FLAGS._beam_buckets))
-    mylog("BEAM_DECODE:")
-    mylog("total: {}".format(test_total_size))
-    mylog("buckets: {}".format(test_bucket_sizes))
-    
-
-
-    config = tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)
-    config.gpu_options.allow_growth = FLAGS.allow_growth
-
-    with tf.Session(config=config) as sess:
-
-        # runtime profile
-        if FLAGS.profile:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-            run_metadata = tf.RunMetadata()
-        else:
-            run_options = None
-            run_metadata = None
-
-        mylog("Creating Model")
-        model = create_model(sess, run_options, run_metadata)
-        show_all_variables()
-
-
-           
-
-
-
-
-def mkdir(path):
-    if not os.path.exists(path):
-        os.mkdir(path)
-
-
-def parsing_flags():
-    # saved_model
-
-    FLAGS.data_cache_dir = os.path.join(FLAGS.model_dir, "data_cache")
-    FLAGS.saved_model_dir = os.path.join(FLAGS.model_dir, "saved_model")
-    FLAGS.decode_output_dir = os.path.join(FLAGS.model_dir, "decode_output")
-    FLAGS.summary_dir = FLAGS.saved_model_dir
-
-    mkdir(FLAGS.model_dir)
-    mkdir(FLAGS.data_cache_dir)
-    mkdir(FLAGS.saved_model_dir)
-    mkdir(FLAGS.summary_dir)
-    mkdir(FLAGS.decode_output_dir)
-
-    # for logs
-    log_path = os.path.join(FLAGS.model_dir,"log.{}.txt".format(FLAGS.mode))
-    filemode = 'w' if FLAGS.fromScratch else "a"
-    logging.basicConfig(filename=log_path,level=logging.DEBUG, filemode = filemode, format="%(asctime)s %(threadName)-10s %(message)s",datefmt='%m/%d/%Y %I:%M:%S')
-    
-    FLAGS.beam_search = False
-
-    FLAGS.num_models = len(FLAGS.NN.split(","))
-    
-
-    log_flags()
-
-    
  
 def main(_):
     
-    parsing_flags()
+    parsing_flags(FLAGS)
     
     if FLAGS.mode == "TRAIN":
         train()
-
-
-    # not ready yet
-    if FLAGS.mode == 'FORCE_DECODE':
-        mylog("\nWARNING: \n 1. The output file and original file may not align one to one, because we remove the lines whose lenght exceeds the maximum length set by -L \n 2. The score is -sum(log(p)) with base e and includes EOS. \n")
-        
-        FLAGS.batch_size = 1
-        FLAGS.score_file = os.path.join(FLAGS.model_dir,FLAGS.force_decode_output)
-        #FLAGS.n_bucket = 1
-        force_decode()
-
-    # not ready yet
-    if FLAGS.mode == 'DUMP_LSTM':
-        mylog("\nWARNING: The output file and original file may not align one to one, because we remove the lines whose lenght exceeds the maximum length set by -L \n")
-            
-        FLAGS.batch_size = 1
-        FLAGS.dump_file = os.path.join(FLAGS.model_dir,FLAGS.dump_lstm_output)
-        #FLAGS.n_bucket = 1
-        dump_lstm()
-
-    if FLAGS.mode == "BEAM_DECODE":
-        FLAGS.batch_size = FLAGS.beam_size
-        FLAGS.beam_search = True
-        beam_decode()
     
     logging.shutdown()
     

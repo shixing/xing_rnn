@@ -187,6 +187,7 @@ class SeqModelDistributed:
         # combine losses, updates and gradients norm
         self.updates = [] # per model
         self.gradient_norms = []
+        self.logits = []
 
 
         losses = [] # per model
@@ -194,7 +195,8 @@ class SeqModelDistributed:
             losses.append(model.losses)
             self.updates.append(model.updates)
             self.gradient_norms.append(model.gradient_norms)
-
+            self.logits.append(model.logits)
+            
         self.losses = tf.add_n(losses)
 
         # get init ops group
@@ -239,7 +241,7 @@ class SeqModelDistributed:
         return sess.run(self.models[0].learning_rate)
         
     def step(self,session, sources_per_model, inputs_per_model, targets_per_model, target_weights_per_model, 
-        bucket_id, forward_only = False):
+             bucket_id, forward_only = False):
         # just ignore the bucket_id
         
         if forward_only:
@@ -263,14 +265,29 @@ class SeqModelDistributed:
             input_feed[self.models[m].targets.name] = targets
             input_feed[self.models[m].target_weights.name] = target_weights
 
+        dump_logits_when_error = True
+            
         # output_feed
         output_feed = []
         output_feed.append(self.losses)
         if not forward_only:
             output_feed += [self.updates, self.gradient_norms]
+            if dump_logits_when_error:
+                output_feed += [self.logits]
 
         outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
 
+        if dump_logits_when_error and (not forward_only) and (np.isnan(outputs[0]) or np.isinf(outputs[0]) or np.isnan(outputs[2][0]) or np.isinf(outputs[2][0])):
+            mylog("L/norm is Nan/Inf! {} {}".format(outputs[0], outputs[2][0]))
+            for i in xrange(len(targets_per_model)):
+                target = targets_per_model[i]
+                source = sources_per_model[i]
+                logits = outputs[3][i]
+                np.savetxt("targets{}.npz".format(i),target)
+                np.savetxt("source_inputs{}.npz".format(i),source)
+                np.savetxt("logits{}.npz".format(i),logits)
+            return # will cause a exception 
+        
         if forward_only:
             return outputs[0]
         else:

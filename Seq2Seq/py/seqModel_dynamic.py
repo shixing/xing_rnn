@@ -87,9 +87,6 @@ class SeqModel(object):
         self.GO_ID = 1
         self.EOS_ID = 2
         self.UNK_ID = 3
-        self.GO_ID = 1
-        self.EOS_ID = 2
-        self.UNK_ID = 3
         self.batch_size = batch_size
         self.devices = devices
         self.run_options = run_options
@@ -342,7 +339,7 @@ class SeqModel(object):
                 target_length = len(target_seq)
 
         for source_seq, target_seq in zip(temp_source_seqs, temp_target_seqs):
-                    
+          
             source_seq =  [self.PAD_ID] * (source_length - len(source_seq)) + source_seq
             
             if len(target_seq) == 0: # for certain dev entry
