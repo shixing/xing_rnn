@@ -1,6 +1,6 @@
 # draw the learning_rate, dev_ppx, train_ppx, norm plot over checkpoints or wall time
 
-from datetime import datetime
+from datetime import datetime,timedelta
 import sys
 import os
 
@@ -33,6 +33,21 @@ def load_data(fn):
         
     f.close()
 
+    # make sure consectutive times are less than 12 hours;
+    new_times = []
+    delta = timedelta(0,3600*12)
+    new_times.append(times[0])
+    for t in times[1:]:
+        if t > new_times[-1]:
+            while t - new_times[-1] > delta:
+                t -= delta
+        else:
+            while t < new_times[-1]:
+                t += delta
+        new_times.append(t)
+
+    times = new_times
+    
     # normalize times
     new_times = []
     start = times[0]
@@ -74,7 +89,7 @@ def draw(data, x = 'checkpoint', y = 'dev_ppx'):
         elif y == "norm":
             ydata = norms
 
-        h, = plt.plot(xdata, ydata, label = fd)
+        h, = plt.plot(xdata[1:], ydata[1:], label = fd)
         handles.append(h)
         labels.append(fd)
 

@@ -42,11 +42,11 @@ def distributed():
     grids = {"name":["c2t"],
              "batch_size":[128],
              "size": [500],
-             "dropout":[0.8],
+             "dropout":[0.5, 0.8],
              "learning_rate":[1.0],
              "n_epoch":[20],
-             "num_layers":[2],
-             "attention":[True],
+             "num_layers":[1,2],
+             "attention":[True, False],
              "from_vocab_size":[200000],
              "to_vocab_size":[40000],
              "min_source_length":[0],
@@ -71,7 +71,7 @@ def distributed():
 
 if __name__ == "__main__":
     distributed()
-    standalone()
+    #standalone()
 
     
 

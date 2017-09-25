@@ -130,7 +130,7 @@ tf.app.flags.DEFINE_integer("checkpoint_steps", 0, "How many steps between check
 
 FLAGS = tf.app.flags.FLAGS
 
-from run import get_buckets, log_flags, get_device_address, dump_graph, show_all_variables, get_buckets, read_data, mkdir, parsing_flags
+from helper import get_buckets, log_flags, get_device_address, dump_graph, show_all_variables, get_buckets, read_data, mkdir, parsing_flags
 
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
@@ -223,8 +223,8 @@ def train():
     )
 
 
-    train_data_bucket = read_data(from_train,to_train)
-    dev_data_bucket = read_data(from_dev,to_dev)
+    train_data_bucket = read_data(from_train,to_train,_buckets)
+    dev_data_bucket = read_data(from_dev,to_dev, _buckets)
     _,_,real_vocab_size_from,real_vocab_size_to = data_utils.get_vocab_info(FLAGS.data_cache_dir)
     
     FLAGS._buckets = _buckets
