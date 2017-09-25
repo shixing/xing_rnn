@@ -1,3 +1,5 @@
+# deprecated code
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -268,11 +270,6 @@ class SeqModel(object):
             clipped_gradients, norm = tf.clip_by_global_norm(agg_gradients[b], self.max_gradient_norm)
             self.gradient_norms.append(norm)
             self.updates.append(self.opt.apply_gradients(zip(clipped_gradients, self.params), global_step = self.global_step))
-            
-
-        
-        
-        
 
 
 

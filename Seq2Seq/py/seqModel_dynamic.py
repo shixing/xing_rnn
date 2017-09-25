@@ -1,4 +1,3 @@
-# try to create the sequence model with dynamic_rnn
 
 from __future__ import absolute_import
 from __future__ import division
@@ -111,8 +110,8 @@ class SeqModel(object):
             self.global_batch_size = batch_size * n_distributed_models
 
         self.first_batch = True
-          
-          
+        
+        
         # some parameters
         with tf.device(devices[0]):
             self.dropoutRate = tf.get_variable('dropoutRate',initializer = float(dropoutRate), trainable=False, dtype=dtype)        
