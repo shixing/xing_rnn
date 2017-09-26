@@ -335,6 +335,17 @@ def get_real_vocab_size(vocab_path):
     f.close()
     return n
 
+def load_word2index(vocab_path):
+    f = open(to_vocab_path)
+    d = {}
+    i = 0
+    for line in f:
+        line = line.strip()
+        d[line] = i
+        i += 1
+    f.close()
+    return d
+
 
 def ids_to_tokens(lines, to_vocab_path, dest_path):
     d = []

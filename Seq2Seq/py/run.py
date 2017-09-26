@@ -29,6 +29,8 @@ from state import StateWrapper
 from tensorflow.python import debug as tf_debug
 from customize_debug import has_nan
 
+from fsa import FSA, State
+
 from helper import get_buckets, log_flags, get_device_address, dump_graph, show_all_variables, get_buckets, read_data, read_data_test, mkdir, parsing_flags, declare_flags
 
 declare_flags()
@@ -76,7 +78,8 @@ def create_model(session, run_options, run_metadata):
                          with_sampled_softmax = FLAGS.with_sampled_softmax,
                          n_samples = FLAGS.n_samples,
                          attention_style = FLAGS.attention_style,
-                         attention_scale = FLAGS.attention_scale
+                         attention_scale = FLAGS.attention_scale,
+                         with_fsa = FLAGS.with_fsa
                          )
 
     ckpt = tf.train.get_checkpoint_state(FLAGS.saved_model_dir)
@@ -489,7 +492,11 @@ def beam_decode():
     mylog("total: {}".format(test_total_size))
     mylog("buckets: {}".format(test_bucket_sizes))
     
-
+    # fsa
+    if FLAGS.with_fsa:
+        to_word2index = data_utils.load_word2index(to_vocab_path)
+        _fsa = FSA(FLAGS.fsa_path,to_word2index)
+        _fsa.load_fsa()
 
     config = tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)
     config.gpu_options.allow_growth = FLAGS.allow_growth
@@ -536,6 +543,7 @@ def beam_decode():
             target_inputs = [data_utils.GO_ID] * FLAGS.beam_size
             min_target_length = int(length * FLAGS.min_ratio) + 1
             max_target_length = int(length * FLAGS.max_ratio) + 1 # include EOS
+            
             for i in xrange(max_target_length):
                 if i == 0:
                     top_value, top_index, eos_value = model.beam_step(sess, bucket_id, index=i, sources = source_inputs, target_inputs = target_inputs)

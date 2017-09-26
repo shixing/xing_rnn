@@ -109,6 +109,9 @@ def declare_flags(distributed = False):
     tf.app.flags.DEFINE_float("max_ratio", 1.5, "max ratio: the output should be at most source_length*max_ratio long")
     tf.app.flags.DEFINE_boolean("load_from_best", True, "whether to load best model to decode. If False, it will load the last model saved.")
 
+    # for FSA
+    tf.app.flags.DEFINE_string("fsa_path", None, "fsa path if decode with fsa.")
+    
     # dynamic_rnn
     tf.app.flags.DEFINE_boolean("dynamic_rnn", True, "whether to use dynamic_rnn instead of static_rnn.")
 
@@ -288,6 +291,13 @@ def parsing_flags(_FLAGS):
 
     if "NN" in _FLAGS.__flags:
         _FLAGS.num_models = len(_FLAGS.NN.split(","))
-    
+
+    # for FSA
+    if _FLAGS.fsa_filename != None:
+        _FLAGS.with_fsa = True
+    else:
+        _FLAGS.with_fsa = False
+
+        
 
     log_flags(_FLAGS)

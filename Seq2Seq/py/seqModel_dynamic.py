@@ -74,7 +74,8 @@ class SeqModel(object):
                  attention_scale = True,
                  standalone = True,
                  swap_memory = True,
-                 n_distributed_models = 1
+                 n_distributed_models = 1,
+                 with_fsa = False
                  ):
         """Create the model.
         """
@@ -104,7 +105,8 @@ class SeqModel(object):
         self.attention_scale = attention_scale
         self.max_gradient_norm = max_gradient_norm
         self.swap_memory = swap_memory
-
+        self.with_fsa = with_fsa
+        
         self.global_batch_size = batch_size
         if not standalone:
             self.global_batch_size = batch_size * n_distributed_models
@@ -517,7 +519,12 @@ class SeqModel(object):
 
                 # place_holders
                 self.beam_parent = tf.placeholder(tf.int32, shape=[self.batch_size], name = "beam_parent")
-                #self.zero_beam_parent = [0]*self.batch_size
+
+                # for FSA
+                if self.with_fsa:
+                    self.fsa_target_mask = tf.placeholder(tf.int32, shape = [self.batch_size, self.target_vocab_size], name = 'fsa_target_mask')
+                    self.mask_values = -1.0 * tf.ones([self.batch_size, self.target_vocab_size])
+                
 
                 self.beamStates = BeamStates(self, self.beam_parent)
         
@@ -525,7 +532,7 @@ class SeqModel(object):
             self.beam_with_buckets(self.sources_embed, self.sources, self.inputs_embed, self.beam_buckets, self.encoder_cell, self.decoder_cell, self.dtype, self.devices, self.with_attention)
 
             
-    def beam_step(self, session, bucket_id, index = 0, sources = None, target_inputs = None, beam_parent = None ):
+    def beam_step(self, session, bucket_id, index = 0, sources = None, target_inputs = None, beam_parent = None, fsa_target_mask = None ):
       
         # just ignore the bucket_id
         def convert2d(data):
@@ -572,6 +579,9 @@ class SeqModel(object):
 
         input_feed[self.inputs.name] = target_inputs #[batch_size]
 
+        if fsa_target_mask != None:
+          input_feed[self.fsa_target_mask.name] = fsa_target_mask
+
         output_feed = {}
         output_feed['value'] = self.topk_value
         output_feed['index'] = self.topk_index
@@ -611,6 +621,11 @@ class SeqModel(object):
         return word_inputs, finished, length
         
 
+    def mask_target(self, softmax, target_mask, mask_values):
+        condition = tf.equal(target_mask,1)
+        softmax_masked = tf.where(condition, softmax, mask_values)
+        return softmax_masked
+      
 
     def beam_with_buckets(self, sources, sources_raw, inputs, source_buckets, encoder_cell, decoder_cell, dtype, devices = None, attention = False):
 
@@ -630,6 +645,9 @@ class SeqModel(object):
             # logits
             _softmax = tf.nn.softmax(tf.add(tf.matmul(_ht, self.output_embedding, transpose_b = True), self.output_bias)) 
 
+            if self.with_fsa:
+              _softmax = self.mask_target(_softmax, self.fsa_target_mask, self.mask_values)
+            
             # topk
             value, index = tf.nn.top_k(_softmax, self.topk_n, sorted = True)
             eos_v = tf.slice(_softmax, [0,self.EOS_ID],[-1,1])
