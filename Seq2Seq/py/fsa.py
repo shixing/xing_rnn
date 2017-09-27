@@ -27,7 +27,7 @@ class State:
                 results.append((state_s, float_weight))
 
         # check the *e* link
-        empty = -2
+        empty = -1
         if empty in self.weights:
             for state_name in self.weights[empty]:
                 state_s, float_weight = self.weights[empty][state_name]
@@ -166,8 +166,11 @@ if __name__ == "__main__":
     word2index['_EOS'] = 0
     fsa = FSA(fsa_filename,word2index)
     fsa.load_fsa()
+
+    print fsa.end_state.weights
+    
     for i in fsa.end_state.next_word_indices():
-        print i, fsa.index2word[i]
-    results = []
-    fsa.next_states(fsa.start_state, 6, results )
-    print results
+        results = []
+        fsa.next_states(fsa.end_state, i, results)
+        print i, fsa.index2word[i], results
+

@@ -532,7 +532,7 @@ class SeqModel(object):
             self.beam_with_buckets(self.sources_embed, self.sources, self.inputs_embed, self.beam_buckets, self.encoder_cell, self.decoder_cell, self.dtype, self.devices, self.with_attention)
 
             
-    def beam_step(self, session, bucket_id, index = 0, sources = None, target_inputs = None, beam_parent = None, fsa_target_mask = None ):
+    def beam_step(self, session, bucket_id, index = 0, sources = None, target_inputs = None, beam_parent = None, fsa_target_mask = None):
       
         # just ignore the bucket_id
         def convert2d(data):
@@ -579,7 +579,7 @@ class SeqModel(object):
 
         input_feed[self.inputs.name] = target_inputs #[batch_size]
 
-        if fsa_target_mask != None:
+        if self.with_fsa:
           input_feed[self.fsa_target_mask.name] = fsa_target_mask
 
         output_feed = {}

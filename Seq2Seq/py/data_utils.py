@@ -336,7 +336,7 @@ def get_real_vocab_size(vocab_path):
     return n
 
 def load_word2index(vocab_path):
-    f = open(to_vocab_path)
+    f = open(vocab_path)
     d = {}
     i = 0
     for line in f:

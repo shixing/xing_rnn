@@ -9,6 +9,7 @@ A tensorflow based **Seq2Seq model** implementation with following highlights:
  1. Multiple attention choices : **additive** and **multiplicative**, both with **scale** option.
  2. Multi-GPU support : **model parallel** (put different layer on different GPU) and **data  parallel** (put multiple replicas on different GPU).
  3. Beam search decoding.
+ 4. Beam search decoding **with FSA**
  4. Easy hyperparameter tuning: a single script to generate both **training** and **decoding** scripts on different hyperparameter settings (**grid search**).
  5. A good documentation to illustrate **padding**, **source reverse**, **buckets**, and **multi-GPU support**
  6. Detail analysis the effect of different hyperparameter settings on **speed**, **GPU memory usage** and **performance**.
@@ -27,12 +28,14 @@ bash init.sh  # create folder: model, jobs
 # Train & Decode
 
 ## Single Model on a Single Machine
+### [Train]
 Folder `data/small` contains the train, dev and test data set for a toy task `string copy`. To train a seq2seq model on your `GPU` or `CPU`, run the following script: 
 ```bash 
 cd xingshi_rnn/Seq2Seq/sh
 bash smallm4h100d07l01n2attadagradAddNS.train.sh
 ```
 As the script name indicates, it's a 2 layers (n2), 100 hidden states (h100) seq2seq model with additive attention (att AddNS), and trained by adagrad (adagrad) with learining rate 0.1 (l01), dropout rate 0.3 (d07) and batch size 4 (m4). The saved model and log file will appears in `xing_rnn/Seq2Seq/model/smallm4h100d07l01n2attadagradAddNS/`.
+### [Decode]
 To decode and get the BLEU score
 ```bash
 bash smallm4h100d07l01n2attadagradAddNS.b10.decode.sh
@@ -41,18 +44,45 @@ bash smallm4h100d07l01n2attadagradAddNS.b10.bleu.sh
 As the script name indicates, the beam size of decoding is 10. The decode output will be `model/smallm4h100d07l01n2attadagradAddNS/decode_output/b10.output`, and the BLEU score will be `model/smallm4h100d07l01n2attadagradAddNS/decode_output/b10.bleu`.
 
 ## Data Parallel on a Multi-GPU Machine
+### [Train]
 We also support data parallelism for training, i.e. you can make several replica of your model and place them on different GPUs, all these replica will train in a `synchronize` way. This essentially means a larger batch size, it's more stable so that you can choose a larger learning rate to start with. More detials about `synchronize-SGD`, please refer to [Revisiting Distributed Synchronous SGD](https://openreview.net/pdf?id=D1VDZ5kMAu5jEJ1zfEWL).
 To train our string copy seq2seq model with 4 replicas on a `4 GPU` machine, run the following script: 
 ```bash 
 bash smallm4h100d07l01n2attadagradDIST4AddNS.train.sh
 ```
 The model and log will be saved at `model/smallm4h100d07l01n2attadagradDIST4AddNS`.
+### [Decode]
 Similarly, to decode and evaluate the BLEU score, run the following script:
 ```bash
 bash smallm4h100d07l01n2attadagradDIST4AddNS.b10.train.sh
 bash smallm4h100d07l01n2attadagradDIST4AddNS.b10.train.sh
 ```
 The decode output will be `model/smallm4h100d07l01n2attadagradDIST4AddNS/decode_output/b10.output`, and the BLEU score will be `model/smallm4h100d07l01n2attadagradDIST4AddNS/decode_output/b10.bleu`.
+
+## Decoding with Finite State Acceptor (FSA)
+
+This section will describe how you can constrain the RNN decoding with a FSA so that the every output will be accepted by the FSA. The FSA file format should follow the format defined by [Carmel](http://www.isi.edu/licensed-sw/carmel/). 
+
+The sampled data file related with this section are in folder `data/fsa/`. We will focus on a simple task : Translate numbers into letters, and use a fsa file to force the output to have following words: ["lstm","is","great","slow","luckily","we","make","it","fast","enough","and","with","fsa"]
+### [Train]
+Training has nothing to do with FSA, we just train a normal seq2seq model.
+```bash
+cd sh/
+bash fsam4h20d07l0001n2attadamAddNS.train.sh
+```
+After 10 epochs, the perplexity on development set is 2.1856.
+### [Decode]
+We will first decode without FSA: 
+```bash
+bash fsam4h20d07l0001n2attadamAddNS.b10.decode.sh
+```
+Check the result in `model/fsam4h20d07l0001n2attadamAddNS/decode_output/b10.output`: `f s s s l o w e n o u g h`. The first three letters are not a valid word. 
+
+Next, we decode the source with a FSA `data/fsa/fsa.txt`:
+```bash
+bash fsam4h20d07l0001n2attadamAddNS.b10.decode.fsa.sh
+```
+Now the new result is `f a s t i t e n o u g h i t`. It's not exactly equal to the reference, but it contains 4 valid words, which is forced by our FSA. 
 
 # Hyperparameter Tuning
 
@@ -133,6 +163,9 @@ model/{model_id}/
 ```
 
 ## Attention
+Use `--attention_style` to control the way to calculate attention. 
+`additive`: `v * tanh( W_1 * h_s + W_2 * h_t + b )`;
+`multiply`: ` h_s * W * h_t`;
 
 ## Dropout
 
@@ -143,7 +176,7 @@ For attention layer, we do not do any dropouts at either the input or output.
 ## Dynamic RNN
 By default, the code will use `tf.nn.dynamic_rnn`. It's about 15% faster and can reduce the memory usage on GPU by 50%, thanks to the `swap_memory` option.
 
-You can choose to use `tf.nn.static_rnn` by setting the flag `dynamic_rnn = False`. 
+`tf.nn.static_rnn(seqModel.py, seqModelDistributed.py)` is now deprecated. 
 
 ## Bucket sizes
 `max_source_length` = max source length
@@ -156,14 +189,8 @@ Here is how we find similar length sentences into a batch:
 2. To form a batch, we randomly choose a bucket, and then randomly select `batch_size` pairs as a batch. 
 3. Calculate the actual max source length and max target length in that batch. Then we pad each pair in the batch to make sure every pair in a batch have the same length. 
 
-
-
-
-## Multi-GPU support 
-### Model parallel
-### Data parallel 
-	
 ## Decoding Length Control
+The two options, `--min_ratio` and `--max_ratio`, are used to control the decoding length. 
 
 ## Tensorboard:
 

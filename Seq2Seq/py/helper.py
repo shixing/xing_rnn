@@ -111,7 +111,8 @@ def declare_flags(distributed = False):
 
     # for FSA
     tf.app.flags.DEFINE_string("fsa_path", None, "fsa path if decode with fsa.")
-    
+    tf.app.flags.DEFINE_float("fsa_weight", 1.0, "the weight of the fsa weight.")
+
     # dynamic_rnn
     tf.app.flags.DEFINE_boolean("dynamic_rnn", True, "whether to use dynamic_rnn instead of static_rnn.")
 
@@ -293,7 +294,7 @@ def parsing_flags(_FLAGS):
         _FLAGS.num_models = len(_FLAGS.NN.split(","))
 
     # for FSA
-    if _FLAGS.fsa_filename != None:
+    if _FLAGS.fsa_path != None:
         _FLAGS.with_fsa = True
     else:
         _FLAGS.with_fsa = False

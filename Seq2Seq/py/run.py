@@ -33,6 +33,8 @@ from fsa import FSA, State
 
 from helper import get_buckets, log_flags, get_device_address, dump_graph, show_all_variables, get_buckets, read_data, read_data_test, mkdir, parsing_flags, declare_flags
 
+from beam_states import Beam
+
 declare_flags()
 FLAGS = tf.app.flags.FLAGS
 
@@ -102,6 +104,8 @@ def create_model(session, run_options, run_metadata):
         mylog("Created model with fresh parameters.")
         session.run(tf.global_variables_initializer())
     return model
+
+
 
 def train():
 
@@ -346,6 +350,7 @@ def train():
                 get_batch_time = 0
 
 
+
 def evaluate(sess, model, data_set):
     # Run evals on development set and print their perplexity/loss.
     dropoutRateRaw = FLAGS.keep_prob
@@ -373,6 +378,7 @@ def evaluate(sess, model, data_set):
     sess.run(model.dropoutAssign_op)
 
     return loss, ppx
+
 
 
 def force_decode():
@@ -458,8 +464,7 @@ def force_decode():
         fdump.close()
             
 
-
-
+        
 def beam_decode():
 
     mylog("Reading Data...")
@@ -493,6 +498,7 @@ def beam_decode():
     mylog("buckets: {}".format(test_bucket_sizes))
     
     # fsa
+    _fsa = None
     if FLAGS.with_fsa:
         to_word2index = data_utils.load_word2index(to_vocab_path)
         _fsa = FSA(FLAGS.fsa_path,to_word2index)
@@ -531,101 +537,26 @@ def beam_decode():
 
         for source_inputs, bucket_id, length, line_id in ite:
 
-            print("--- decoding {}/{} {}/{} sent ---".format(i_sent, test_total_size,line_id,n_test_original))
+            mylog("--- decoding {}/{} {}/{} sent ---".format(i_sent, test_total_size,line_id,n_test_original))
             i_sent += 1
             
+            beam = Beam(sess,
+                        model,
+                        source_inputs,
+                        length,
+                        bucket_id,
+                        FLAGS.beam_size,
+                        FLAGS.min_ratio,
+                        FLAGS.max_ratio,
+                        FLAGS.print_beam
+            )
 
-            results = [] # (sentence,score)
-            scores = [0.0] * FLAGS.beam_size
-            sentences = [[] for x in xrange(FLAGS.beam_size)]
-            beam_parent = range(FLAGS.beam_size)
-
-            target_inputs = [data_utils.GO_ID] * FLAGS.beam_size
-            min_target_length = int(length * FLAGS.min_ratio) + 1
-            max_target_length = int(length * FLAGS.max_ratio) + 1 # include EOS
+            if FLAGS.with_fsa:
+                beam.init_fsa(_fsa, FLAGS.fsa_weight, FLAGS.real_vocab_size_to)
             
-            for i in xrange(max_target_length):
-                if i == 0:
-                    top_value, top_index, eos_value = model.beam_step(sess, bucket_id, index=i, sources = source_inputs, target_inputs = target_inputs)
-                else:
-                    top_value, top_index, eos_value = model.beam_step(sess, bucket_id, index=i,  target_inputs = target_inputs, beam_parent = beam_parent)
+            best_sentence, best_score = beam.decode()
 
-                # top_value = [array[batch_size, batch_size]]
-                # top_index = [array[batch_size, batch_size]]
-                # eos_value = [array[batch_size, 1] ]
-
-                # expand
-                global_queue = []
-
-                if i == 0:
-                    nrow = 1
-                else:
-                    nrow = FLAGS.beam_size
-
-                if i == max_target_length - 1: # last_step
-                    for row in xrange(nrow):
-
-                        score = scores[row] + np.log(eos_value[0][row,0])
-                        word_index = data_utils.EOS_ID
-                        beam_index = row
-                        global_queue.append((score, beam_index, word_index))                         
-
-                else:
-                    for row in xrange(nrow):
-                        for col in xrange(top_index[0].shape[1]):
-                            score = scores[row] + np.log(top_value[0][row,col])
-                            word_index = top_index[0][row,col]
-                            beam_index = row
-
-                            global_queue.append((score, beam_index, word_index))                         
-
-                global_queue = sorted(global_queue, key = lambda x : -x[0])
-
-
-                if FLAGS.print_beam:
-                    print("--------- Step {} --------".format(i))
-
-                target_inputs = []
-                beam_parent = []
-                scores = []
-                temp_sentences = []
-
-                for j, (score, beam_index, word_index) in enumerate(global_queue):
-                    if word_index == data_utils.EOS_ID:
-                        if len(sentences[beam_index])+1 < min_target_length:
-                            continue
-
-                        results.append((sentences[beam_index] + [word_index], score))
-                        if FLAGS.print_beam:
-                            print("*Beam:{} Father:{} word:{} score:{}".format(j,beam_index,word_index,score))
-                        continue
-                    
-                    if FLAGS.print_beam:
-                        print("Beam:{} Father:{} word:{} score:{}".format(j,beam_index,word_index,score))
-                    beam_parent.append(beam_index)
-
-                    
-                    target_inputs.append(word_index)
-                    scores.append(score)
-                    temp_sentences.append(sentences[beam_index] + [word_index])
-                    
-                    if len(scores) >= FLAGS.beam_size:
-                        break
-                   
-                # can not fill beam_size, just repeat the last one
-                while len(scores) < FLAGS.beam_size and i < max_target_length - 1:
-                    beam_parent.append(beam_parent[-1])
-                    target_inputs.append(target_inputs[-1])
-                    scores.append(scores[-1])
-                    temp_sentences.append(temp_sentences[-1])
-                
-                sentences = temp_sentences
-                    
-                # print the 1 best 
-            results = sorted(results, key = lambda x: -x[1])
-            
-            #targets.append(results[0][0])
-            targets[line_id] = results[0][0] # with EOS
+            targets[line_id] = best_sentence # with EOS
 
         targets_in_original_order = []
         for i in xrange(n_test_original):
@@ -634,11 +565,11 @@ def beam_decode():
             else:
                 targets_in_original_order.append([2]) #[_EOS]
 
+        # dump to file
         data_utils.ids_to_tokens(targets_in_original_order, to_vocab_path, FLAGS.decode_output)
                 
 
-
-           
+        
 def dump_lstm():
     # Not tested yet
     # dump the hidden states to some where
@@ -727,7 +658,8 @@ def dump_lstm():
 
         fdump.close()
         
- 
+
+        
 def main(_):
     
     parsing_flags(FLAGS)
