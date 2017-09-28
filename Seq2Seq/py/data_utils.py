@@ -335,6 +335,19 @@ def get_real_vocab_size(vocab_path):
     f.close()
     return n
 
+  
+def load_index2word(vocab_path):
+    f = open(vocab_path)
+    d = {}
+    i = 0
+    for line in f:
+        line = line.strip()
+        d[i] = line
+        i += 1
+    f.close()
+    return d
+
+  
 def load_word2index(vocab_path):
     f = open(vocab_path)
     d = {}

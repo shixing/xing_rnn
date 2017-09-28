@@ -36,7 +36,7 @@ def distributed():
 def distributed2():
     
     j = Jobs("claim2xml_100k",hours = 10, machine_type = "gpu4")
-    grids = {"name":["c2x100kv100"],
+    grids = {"name":["c2x100kv5000"],
              "batch_size":[128],
              "size": [500],
              "dropout":[0.8],
@@ -45,7 +45,7 @@ def distributed2():
              "num_layers":[2],
              "attention":[True],
              "from_vocab_size":[20000],
-             "to_vocab_size":[100],
+             "to_vocab_size":[5000],
              "min_source_length":[0],
              "max_source_length":[200],
              "min_target_length":[0],

@@ -112,7 +112,10 @@ def declare_flags(distributed = False):
     # for FSA
     tf.app.flags.DEFINE_string("fsa_path", None, "fsa path if decode with fsa.")
     tf.app.flags.DEFINE_float("fsa_weight", 1.0, "the weight of the fsa weight.")
+    tf.app.flags.DEFINE_boolean("individual_fsa", False, "whether should we provide individual fsa for each test example ")
+    
 
+    
     # dynamic_rnn
     tf.app.flags.DEFINE_boolean("dynamic_rnn", True, "whether to use dynamic_rnn instead of static_rnn.")
 

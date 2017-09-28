@@ -37,7 +37,7 @@ class BeamCell:
 class Beam:
     # to decode one sentence
     
-    def __init__(self,  sess, model, source_inputs, length,  bucket_id,  beam_size, min_ratio, max_ratio, print_beam):
+    def __init__(self,  sess, model, source_inputs, length,  bucket_id, beam_size, min_ratio, max_ratio, print_beam):
         self.beam_size = beam_size
         self.min_target_length = int(length * min_ratio) + 1
         self.max_target_length = int(length * max_ratio) + 1 # include EOS
@@ -97,9 +97,14 @@ class Beam:
         # return the top one sentence and scores
         self.results = sorted(self.results, key = lambda x: -x[1])
 
-        best_sentence = self.results[0][0]
-        best_score = self.results[0][1]
-
+        if len(self.results) > 0:
+            best_sentence = self.results[0][0]
+            best_score = self.results[0][1]
+        else:
+            best_sentence = []
+            best_score = 0.0
+            mylog("No decoding results.")
+            
         return best_sentence, best_score
 
            

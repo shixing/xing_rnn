@@ -500,9 +500,17 @@ def beam_decode():
     # fsa
     _fsa = None
     if FLAGS.with_fsa:
-        to_word2index = data_utils.load_word2index(to_vocab_path)
-        _fsa = FSA(FLAGS.fsa_path,to_word2index)
-        _fsa.load_fsa()
+        if FLAGS.individual_fsa:
+            from fsa_xml import Claim2XML
+            from_index2word = data_utils.load_index2word(from_vocab_path)
+            to_word2index = data_utils.load_word2index(to_vocab_path)
+        else:
+            to_word2index = data_utils.load_word2index(to_vocab_path)
+            _fsa = FSA(FLAGS.fsa_path,to_word2index)
+            _fsa.load_fsa()
+
+
+        
 
     config = tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)
     config.gpu_options.allow_growth = FLAGS.allow_growth
@@ -552,12 +560,18 @@ def beam_decode():
             )
 
             if FLAGS.with_fsa:
-                beam.init_fsa(_fsa, FLAGS.fsa_weight, FLAGS.real_vocab_size_to)
-            
+                if FLAGS.individual_fsa:
+                    _fsa = Claim2XML(FLAGS.fsa_path, to_word2index)
+                    _fsa.write_fsa(i_sent, source_inputs, from_index2word)
+                    _fsa.load_fsa()
+                    beam.init_fsa(_fsa, FLAGS.fsa_weight, FLAGS.real_vocab_size_to)
+                else:
+                    beam.init_fsa(_fsa, FLAGS.fsa_weight, FLAGS.real_vocab_size_to)
+                
             best_sentence, best_score = beam.decode()
 
             targets[line_id] = best_sentence # with EOS
-
+        
         targets_in_original_order = []
         for i in xrange(n_test_original):
             if i in targets:

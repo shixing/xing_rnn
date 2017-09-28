@@ -645,6 +645,7 @@ class SeqModel(object):
             # logits
             _softmax = tf.nn.softmax(tf.add(tf.matmul(_ht, self.output_embedding, transpose_b = True), self.output_bias)) 
 
+
             if self.with_fsa:
               _softmax = self.mask_target(_softmax, self.fsa_target_mask, self.mask_values)
             
