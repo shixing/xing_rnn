@@ -1,2 +1,0 @@
-mkdir model
-mkdir jobs
