@@ -67,72 +67,72 @@ __cmd__
         if self.per_gpu == None:
             self.head = self.head.replace("__GPU_V__","")
 
-            
+        # all the function return (name for train, name for decode, flags)
             
         def name(val):
-            return val, ""
+            return val, "", ""
     
         def batch_size(val):
-            return "m{}".format(val), "--batch_size {}".format(val)
+            return "m{}".format(val), "", "--batch_size {}".format(val)
 
         def size(val):
-            return "h{}".format(val), "--size {}".format(val)
+            return "h{}".format(val), "", "--size {}".format(val)
 
         def dropout(val):
-            return "d{}".format(val), "--keep_prob {}".format(val)
+            return "d{}".format(val), "", "--keep_prob {}".format(val)
 
         def learning_rate(val):
-            return "l{}".format(val), "--learning_rate {}".format(val)
+            return "l{}".format(val), "", "--learning_rate {}".format(val)
 
         def n_epoch(val):
-            return "", "--n_epoch {}".format(val)
+            return "", "","--n_epoch {}".format(val)
 
         def num_layers(val):
-            return "n{}".format(val), "--num_layers {}".format(val)
+            return "n{}".format(val),"", "--num_layers {}".format(val)
 
         def attention(val):
             if val:
-                return "att", "--attention True"
+                return "att","", "--attention True"
             else:
-                return "", "--attention False"
+                return "","", "--attention False"
 
         def from_vocab_size(val):
-            return "", "--from_vocab_size {}".format(val)
+            return "", "","--from_vocab_size {}".format(val)
 
         def to_vocab_size(val):
-            return "", "--to_vocab_size {}".format(val)
+            return "", "","--to_vocab_size {}".format(val)
 
         def min_source_length(val):
-            return "", "--min_source_length {}".format(val)
+            return "", "","--min_source_length {}".format(val)
 
         def max_source_length(val):
-            return "", "--max_source_length {}".format(val)
+            return "","", "--max_source_length {}".format(val)
 
         def min_target_length(val):
-            return "", "--min_target_length {}".format(val)
+            return "", "", "--min_target_length {}".format(val)
 
         def max_target_length(val):
-            return "", "--max_target_length {}".format(val)
+            return "","", "--max_target_length {}".format(val)
 
         def n_bucket(val):
-            return '', "--n_bucket {}".format(val)
+            return '', "","--n_bucket {}".format(val)
 
         def optimizer(val):
-            return val, "--optimizer {}".format(val)
+            return val, "","--optimizer {}".format(val)
 
         def N(val):
-            return "", "--N {}".format(val)
+            return "", "","--N {}".format(val)
 
         def NN(val):
             n_model = len(val.split(","))
-            return "DIST{}".format(n_model), "--NN {}".format(val)
+            return "DIST{}".format(n_model), "", "--NN {}".format(val)
 
         def attention_style(val):
             if val == "additive":
                 fn = "Add"
             else:
                 fn = "Mul"
-            return fn, "--attention_style {}".format(val)
+            return fn, "", "--attention_style {}".format(val)
 
         def attention_scale(val):
             if val:
@@ -140,35 +140,52 @@ __cmd__
             else:
                 fn = "NS"
                 
-            return fn, "--attention_scale {}".format(val)
+            return fn, "","--attention_scale {}".format(val)
 
         def beam_size(val):
-            return "b{}".format(val), "--beam_size {}".format(val)
+            return "", "b{}".format(val), "--beam_size {}".format(val)
 
         def learning_rate_decay_factor(val):
             if val == 1.0:
-                return "",""
+                return "","",""
             else:
-                return "decay{}".format(val),"--learning_rate_decay_factor {} --decay_learning_rate True".format(val)
+                return "decay{}".format(val),"","--learning_rate_decay_factor {} --decay_learning_rate True".format(val)
 
         def fromScratch(val):
             if not val:
-                return "", "--fromScratch False"
+                return "", "","--fromScratch False"
             else:
-                return "",""
+                return "","",""
 
         def preprocess_data(val):
             if not val:
-                return "", "--preprocess_data False"
+                return "", "","--preprocess_data False"
             else:
-                return "",""
+                return "","",""
 
         def checkpoint_frequency(val):
-            return "", "--checkpoint_frequency {}".format(val)
+            return "","", "--checkpoint_frequency {}".format(val)
 
         def checkpoint_steps(val):
-            return "", "--checkpoint_steps {}".format(val)
-            
+            return "", "","--checkpoint_steps {}".format(val)
+
+        def min_ratio(val):
+            return "", "","--min_ratio {}".format(val)
+
+        def max_ratio(val):
+            return "", "","--max_ratio {}".format(val)
+
+        def fsa_path(val):
+            if val != "":                
+                return "", "fsa", "--fsa_path {}".format(val)
+            else:
+                return "", "",""
+
+        def individual_fsa(val):
+            if val:
+                return "", "fsa", "--individual_fsa {}".format(val)
+            else:
+                return "","",""
         
         self.keys= ["name",
                     "batch_size",
@@ -195,7 +212,11 @@ __cmd__
                     "fromScratch",
                     "preprocess_data",
                     "checkpoint_frequency",
-                    "checkpoint_steps"
+                    "checkpoint_steps",
+                    "min_ratio",
+                    "max_ratio",
+                    "fsa_path",
+                    "individual_fsa"
         ]
         
         self.funcs = {"name":name,
@@ -223,7 +244,11 @@ __cmd__
                       "fromScratch":fromScratch,
                       "preprocess_data":preprocess_data,
                       "checkpoint_frequency":checkpoint_frequency,
-                      "checkpoint_steps":checkpoint_steps
+                      "checkpoint_steps":checkpoint_steps,
+                      "min_ratio":min_ratio,
+                      "max_ratio":max_ratio,
+                      "fsa_path": fsa_path,
+                      "individual_fsa":individual_fsa
 
         }
 
@@ -281,20 +306,25 @@ __cmd__
         }
 
         self.decode_template = {"name":"enfr10k",
-                         "size": 200,
-                         "num_layers":2,
-                         "attention":True,
-                         "from_vocab_size":40000,
-                         "to_vocab_size":40000,
-                         "min_source_length":0,
-                         "max_source_length":50,
-                         "min_target_length":0,
-                         "max_target_length":50,
-                         "n_bucket":1,
-                         "N":"00000",
-                         "attention_style":"additive",
-                         "attention_scale":True,
-                         "beam_size": 10}
+                                "size": 200,
+                                "num_layers":2,
+                                "attention":True,
+                                "from_vocab_size":40000,
+                                "to_vocab_size":40000,
+                                "min_source_length":0,
+                                "max_source_length":50,
+                                "min_target_length":0,
+                                "max_target_length":50,
+                                "n_bucket":1,
+                                "N":"00000",
+                                "attention_style":"additive",
+                                "attention_scale":True,
+                                "beam_size": 10,
+                                "min_ratio": 0.5,
+                                "max_ratio": 1.5,
+                                "fsa_path": "",
+                                "individual_fsa": False
+        }
 
         
         
@@ -310,19 +340,8 @@ __cmd__
         self.err_redirect = "2>{}.err.txt"
 
 
-    def generate(self,grids,beams,dist = False):
-        '''
-        grid = {"key":[value]}
-        '''            
 
-        train_template = self.train_template
-        train_cmd = self.train_cmd
-        if dist:
-            train_template = self.train_template_dist
-            train_cmd = self.train_cmd_dist
-
-        
-        
+    def get_combinations(self,grids):
         n = len(grids)
         keys = grids.keys()
         stack = [[]]
@@ -337,40 +356,69 @@ __cmd__
                 for v in grids[key]:
                     new_t = list(t) + [(key,v)]
                     stack.append(new_t)
+        return results
 
+        
+        
+    def generate(self, grids, decode_grids, dist = False):
+        '''
+        grid = {"key":[value]}
+        '''            
+
+        train_template = self.train_template
+        train_cmd = self.train_cmd
+        if dist:
+            train_template = self.train_template_dist
+            train_cmd = self.train_cmd_dist
+
+        train_combine = self.get_combinations(grids)
+        decode_combine = self.get_combinations(decode_grids)
+
+            
         params = []
-        decode_params = []
-        for r in results:
+        # results are all the 
+        for r in train_combine:
             p = dict(train_template)
             p_decode = dict(self.decode_template)
             for k,v in r:
                 p[k] = v
                 if k in p_decode:
                     p_decode[k] = v
-            params.append(p)
-            decode_params.append(p_decode)
-
-
             
+
+            decode_params = []
+
+            for rd in decode_combine:
+                pd = dict(p_decode)
+                for k,v in rd:
+                    if k in pd:
+                        pd[k] = v
+                decode_params.append(pd)
+
+            params.append((p, decode_params))
+                
         def get_name_cmd(paras):
             name = ""
+            dname = ""
             cmd = []
             for key in self.keys:
                 if not key in paras:
                     continue
                 func = self.funcs[key]
                 val = paras[key]
-                n,c = func(val)
+                n,d,c = func(val)
                 name += n
+                dname += d
                 cmd.append(c)
             name = name.replace(".",'')
+            dname = dname.replace(".",'')
             cmd = " ".join(cmd)
-            return name, cmd
+            return name, dname, cmd
 
+        # generate train
         for i in xrange(len(params)):
-            para = params[i]
-            name, cmd = get_name_cmd(para)
-
+            para, decode_params = params[i]
+            name, _, cmd = get_name_cmd(para)
             # train
             fn = "{}/{}.{}.sh".format(self.job_dir,name,"train")
             f = open(fn,'w')
@@ -381,27 +429,24 @@ __cmd__
                 content = content.replace("__GPU_V__","export CUDA_VISIBLE_DEVICES={};".format(i % self.per_gpu))
             f.write(content)
             f.close()
-
-            decode_para = decode_params[i]
-            for b in beams:
-                dp = dict(decode_para)
-                dp["beam_size"] = b
-                _, dcmd = get_name_cmd(dp)
+            
+            for dp in decode_params:
+                _, dname, dcmd = get_name_cmd(dp)
                 # decode
-                fn = "{}/{}.b{}.decode.sh".format(self.job_dir,name,b)
+                fn = "{}/{}.{}.decode.sh".format(self.job_dir,name,dname)
                 f = open(fn,'w')
                 cmd = self.decode_cmd + dcmd
                 content = self.head.replace("__cmd__",cmd)
-                content = content.replace("__id__",name).replace("__decode_id__","b{}".format(b))
+                content = content.replace("__id__",name).replace("__decode_id__","{}".format(dname))
                 f.write(content)
                 f.close()
 
                 # bleu
-                fn = "{}/{}.b{}.bleu.sh".format(self.job_dir,name,b)
+                fn = "{}/{}.{}.bleu.sh".format(self.job_dir,name,dname)
                 f = open(fn,'w')
                 cmd = self.bleu_cmd
                 content = self.head.replace("__cmd__",cmd)
-                content = content.replace("__id__",name).replace("__decode_id__","b{}".format(b))
+                content = content.replace("__id__",name).replace("__decode_id__","{}".format(dname))
                 f.write(content)
                 f.close()
 

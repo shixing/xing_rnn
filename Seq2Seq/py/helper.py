@@ -280,7 +280,12 @@ def parsing_flags(_FLAGS):
     if _FLAGS.mode == "BEAM_DECODE":
         _FLAGS.decode_output_id = _FLAGS.decode_output.split("/")[-1].split(".")[0]
         _FLAGS.decode_output_test_id_dir = os.path.join(_FLAGS.decode_output_dir, _FLAGS.decode_output_id)
+        
         mkdir(_FLAGS.decode_output_test_id_dir)
+
+        if _FLAGS.individual_fsa:
+            _FLAGS.fsa_path = os.path.join(_FLAGS.decode_output_test_id_dir, _FLAGS.decode_output_id+".fsa")
+        
         log_path = os.path.join(_FLAGS.model_dir,"log.{}.{}.txt".format(_FLAGS.mode, _FLAGS.decode_output_id))
         
     else:
@@ -303,5 +308,4 @@ def parsing_flags(_FLAGS):
         _FLAGS.with_fsa = False
 
         
-
     log_flags(_FLAGS)

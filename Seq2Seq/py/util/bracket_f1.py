@@ -1,17 +1,64 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 # process xml bracket F1 score;
-# python3 bracket_f1 reference.txt generated.txt outputfolder
 
 import sys
 import os
+from evalb import score_corpus
 
-from PYEVALB import scorer
 
 def mkdir(path):
     if not os.path.exists(path):
         os.mkdir(path)
 
+def convert_sentence(line):
+    line = line.decode("utf8")
+    words = line.strip().split()
+    new_words = []        
+    i = 0
+    for w in words:
+        if w == "<claim>":
+            w = "(claim"
+        elif w == "</claim>":
+            w = ")"
+        elif w == "<claim-text>":
+            w = "(claim-text"
+        elif w == "</claim-text>":
+            w = ")"
+        else:
+            w = "(w {})".format(i)
+            i += 1
+        new_words.append(w)
+
+    line = u" ".join(new_words)
+    return line, i
+
+        
+def convert_pair(fngold,fntest,fngoldout,fntestout, max_length = -1, min_length = -1):
+    print(max_length, min_length)
+    fgold = open(fngold)
+    ftest = open(fntest)
+    fgo = open(fngoldout,'w')
+    fto = open(fntestout,'w')
+
+    while True:
+        line_gold = fgold.readline()
+        line_test = ftest.readline()
+        if not line_gold:
+            break
+        line_gold, lg = convert_sentence(line_gold)
+        line_test, lt = convert_sentence(line_test)
+
+        if max_length >= 0 and min_length >= 0 and lg <= max_length and lg > min_length:
+            fgo.write(line_gold.encode('utf8')+"\n")
+            fto.write(line_test.encode('utf8')+"\n")
+        
+    fgold.close()
+    ftest.close()
+    fgo.close()
+    fto.close()
+
+        
 def convert(fnin,fnout):
     fin = open(fnin)
     fout = open(fnout,'w')
@@ -19,7 +66,7 @@ def convert(fnin,fnout):
     for line in fin:
         line = line.decode("utf8")
         words = line.strip().split()
-        new_words = []
+        new_words = []        
         i = 0
         for w in words:
             if w == "<claim>":
@@ -34,7 +81,7 @@ def convert(fnin,fnout):
                 w = "(w {})".format(i)
                 i += 1
             new_words.append(w)
-            
+
         line = u" ".join(new_words)
         fout.write(line.encode('utf8')+"\n")
         
@@ -45,6 +92,9 @@ def convert(fnin,fnout):
 def main():
     folder = sys.argv[3]
     mkdir(folder)
+
+
+    # total; 
     gold_path = os.path.join(folder, "gold.txt")
     test_path = os.path.join(folder, "test.txt")
     result_path = os.path.join(folder, "result.txt")
@@ -52,21 +102,19 @@ def main():
     convert(sys.argv[1],gold_path)
     convert(sys.argv[2],test_path)
     
-    scorer.Scorer().evalb(gold_path, test_path, result_path)
+    score_corpus(gold_path, test_path, result_path)
 
-def main2():
-    from PYEVALB import parser
-
-    gold = '(claim (claim-text (w 0) (w 1) (w 2) (w 3) (w 4) (w 5) (w 6) (w 7) (w 8) (w 9) (w 10) (w 11) (w 12) (w 13) (w 14) (w 15) (w 16) (w 17) (w 18) (w 19) (w 20) (w 21) (w 22) (w 23) (w 24) (w 25) (w 26) (w 27) (w 28) (w 29) (w 30) (w 31) (w 32) (w 33) (w 34) (w 35) (w 36) (w 37) (w 38) (w 39) (w 40) (w 41) (w 42) (w 43) (w 44) (w 45) (w 46) (w 47) (w 48) (w 49) (w 50) (w 51) (w 52) (w 53) (w 54) (w 55) (w 56) (w 57) (w 58) (w 59) ) )'
-
-    test = '(claim-text (w 0) (w 1) (w 2) (w 3) (w 4) (w 5) (w 6) (w 7) (w 8) (w 9) (w 10) (w 11) (w 12) (w 13) (w 14) (w 15) (w 16) (w 17) (w 18) (w 19) (w 20) (w 21) (w 22) (w 23) (w 24) (w 25) (w 26) (w 27) (w 28) (w 29) (w 30) (w 31) (w 32) (w 33) (w 34) (w 35) (w 36) (w 37) (w 38) (w 39) (w 40) (w 41) (w 42) (w 43) (w 44) (w 45) (w 46) (w 47) (w 48) (w 49) (w 50) (w 51) (w 52) (w 53) (w 54) (w 55) (w 56) (w 57) (w 58) (w 59) ) )'
-
-    gold_tree = parser.create_from_bracket_string(gold)
-    test_tree = parser.create_from_bracket_string(test)
-
-    result = scorer.Scorer().score_trees(gold_tree, test_tree)
-
-    print result
+    # buckets those sentences by length;
+    buckets = [0, 20,40,80,120,160,200,400,1000]
+    for i in xrange(1, len(buckets)):
+        l = buckets[i]
+        gold_path = os.path.join(folder, "gold{}.txt".format(l))
+        test_path = os.path.join(folder, "test{}.txt".format(l))
+        result_path = os.path.join(folder, "result{}.txt".format(l))
+        
+        convert_pair(sys.argv[1],sys.argv[2],gold_path, test_path, max_length = buckets[i], min_length = buckets[i-1])
+        score_corpus(gold_path, test_path, result_path)
+    
 
     
 if __name__ == "__main__":
