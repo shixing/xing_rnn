@@ -316,7 +316,6 @@ class SeqModel(object):
 
         input_feed[self.sources.name] = sources
 
-
         input_feed[self.inputs.name] = inputs
         input_feed[self.targets.name] = targets
         input_feed[self.target_weights.name] = target_weights

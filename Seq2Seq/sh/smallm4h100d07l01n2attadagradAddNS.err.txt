@@ -1,4 +1,38 @@
-  File "..//py/run.py", line 90
-    mrt = FLAGS.minimum_risk_training
-      ^
-SyntaxError: invalid syntax
+Couldn't import dot_parser, loading of dot files will not be possible.
+2017-12-04 14:46:46.312353: I tensorflow/core/platform/cpu_feature_guard.cc:137] Your CPU supports instructions that this TensorFlow binary was not compiled to use: SSE4.1 SSE4.2 AVX AVX2 FMA
+INFO:tensorflow:Restoring parameters from ..//model/smallm4h100d07l01n2attadagradAddNS/saved_model/best-0
+INFO:tensorflow:Restoring parameters from ..//model/smallm4h100d07l01n2attadagradAddNS/saved_model/best-0
+/Users/xingshi/anaconda/lib/python2.7/site-packages/nltk/translate/bleu_score.py:490: UserWarning: 
+Corpus/Sentence contains 0 counts of 3-gram overlaps.
+BLEU scores might be undesirable; use SmoothingFunction().
+  warnings.warn(_msg)
+/Users/xingshi/anaconda/lib/python2.7/site-packages/nltk/translate/bleu_score.py:490: UserWarning: 
+Corpus/Sentence contains 0 counts of 4-gram overlaps.
+BLEU scores might be undesirable; use SmoothingFunction().
+  warnings.warn(_msg)
+/Users/xingshi/anaconda/lib/python2.7/site-packages/nltk/translate/bleu_score.py:490: UserWarning: 
+Corpus/Sentence contains 0 counts of 2-gram overlaps.
+BLEU scores might be undesirable; use SmoothingFunction().
+  warnings.warn(_msg)
+Traceback (most recent call last):
+  File "..//py/run.py", line 1077, in <module>
+    tf.app.run()
+  File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/platform/app.py", line 48, in run
+    _sys.exit(main(_sys.argv[:1] + flags_passthrough))
+  File "..//py/run.py", line 1046, in main
+    train_mrt()
+  File "..//py/run.py", line 641, in train_mrt
+    samples = model.sample_step(sess, source_inputs, target_inputs)            
+  File "/Users/xingshi/Workspace/misc/lstm/tensorflow/xing_rnn/Seq2Seq/py/seqModel_dynamic.py", line 650, in sample_step
+    outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
+  File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/client/session.py", line 889, in run
+    run_metadata_ptr)
+  File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/client/session.py", line 1120, in _run
+    feed_dict_tensor, options, run_metadata)
+  File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/client/session.py", line 1317, in _do_run
+    options, run_metadata)
+  File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/client/session.py", line 1323, in _do_call
+    return fn(*args)
+  File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/client/session.py", line 1302, in _run_fn
+    status, run_metadata)
+KeyboardInterrupt
