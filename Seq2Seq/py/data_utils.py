@@ -320,7 +320,10 @@ def prepare_test_data(data_dir, from_test_path, from_vocab_path, tokenizer=None)
 
   return from_test_ids_path
 
-
+def prepare_test_target_data(data_dir, to_test_path, to_vocab_path, tokenizer=None):
+  to_test_ids_path = os.path.join(data_dir,"test.tgt.ids")
+  data_to_token_ids(to_test_path, to_test_ids_path, to_vocab_path, tokenizer)
+  return to_test_ids_path
 
 def get_vocab_info(cache_dir):
     from_vocab_path = os.path.join(cache_dir, "vocab.from")

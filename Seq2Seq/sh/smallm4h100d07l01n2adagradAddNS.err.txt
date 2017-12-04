@@ -1,0 +1,3 @@
+Couldn't import dot_parser, loading of dot files will not be possible.
+2017-12-03 22:09:47.699046: I tensorflow/core/platform/cpu_feature_guard.cc:137] Your CPU supports instructions that this TensorFlow binary was not compiled to use: SSE4.1 SSE4.2 AVX AVX2 FMA
+INFO:tensorflow:Restoring parameters from ..//model/smallm4h100d07l01n2adagradAddNS/saved_model/best-0

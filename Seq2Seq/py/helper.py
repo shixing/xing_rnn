@@ -24,6 +24,26 @@ from summary import ModelSummary, variable_summaries
 from google.protobuf import text_format
 
 from state import StateWrapper
+import cPickle
+
+
+def dump_records(records, fn):
+    f = open(fn + ".pickle",'wb')
+    for record in records:
+        cPickle.dump(record, f)            
+    f.close()
+
+    f = open(fn,'w')
+    i = 0 
+    for record in records:
+        f.write('-- {} --\n'.format(i))
+        for key in record:
+            f.write('{}\n'.format(key))
+            value = record[key]
+            f.write('{}\n'.format(value))
+        i += 1
+    f.close()
+
 
 
 def declare_flags(distributed = False):
@@ -42,6 +62,8 @@ def declare_flags(distributed = False):
 
     tf.app.flags.DEFINE_string("decode_output", "./model/small/decode_output/b10.output", "beam search decode output file.")
 
+    tf.app.flags.DEFINE_string("force_decode_output", "./model/small/decode_output/b10.force_decode", "beam search decode output file.")
+    
     # training hypers
     tf.app.flags.DEFINE_string("optimizer", "adam",
                                 "optimizer to choose: adam, adagrad, sgd.")
@@ -53,6 +75,8 @@ def declare_flags(distributed = False):
     tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
                               "Clip gradients to this norm.")
     tf.app.flags.DEFINE_float("keep_prob", 0.5, "1 - dropout rate.")
+    tf.app.flags.DEFINE_boolean("variational_dropout", False, "variational_dropout")
+
     tf.app.flags.DEFINE_integer("batch_size", 64,
                                 "Batch size to use during training.")
 
@@ -136,6 +160,17 @@ def declare_flags(distributed = False):
         # devices placement
         tf.app.flags.DEFINE_string("N", "00000", "There should be (num_layer+3) digits represents the layer device placement of the model: [input_embedding, layer1, layer2, attention_layer, softmax]. Generally, it's better to put top layer and attention_layer at the same GPU and put softmax in a seperate GPU. e.g. 00000 will put all layers on GPU0.")
 
+    # force_decode
+    tf.app.flags.DEFINE_boolean("check_attention", False, "whether to dump the attention score at each step, used in FORCE_DECODING.")
+
+    # tie
+    tf.app.flags.DEFINE_boolean("tie_input_output_embedding", False, "whether to tie the input and output word embeddings during the training?")
+
+    # minimum risk training
+    tf.app.flags.DEFINE_boolean("minimum_risk_training", False, "Use minimum risk trainning?")
+    tf.app.flags.DEFINE_integer("num_sentences_per_batch_in_mrt", 5, "number of sentences per batch in mrt training. If batch_size = 100, and num_sentences_per_batch_in_mrt = 5, then we will sample 20 sentences for each example in MRT training.")
+    tf.app.flags.DEFINE_boolean("include_reference", True, "Whether include the reference sentence in sampled sentences;")
+    tf.app.flags.DEFINE_float("mrt_alpha", 0.005, "mrt_alpha")
 
 
 
@@ -224,6 +259,60 @@ def read_data_test(source_path, _beam_buckets):
             counter += 1
     return data_set, order, counter
 
+def read_reference(target_path):
+    # no buckets, no EOS at the end, just str, not int
+    f = open(target_path)
+    references = []
+    for line in f:
+        word_ids = line.split()
+        references.append(word_ids)
+    f.close()
+    return references
+
+def read_data_test_parallel(source_path, target_path, _buckets):
+
+    order = []
+    data_set = [[] for _ in _buckets]
+    with tf.gfile.GFile(source_path, mode="r") as source_file:
+        with tf.gfile.GFile(target_path, mode="r") as target_file:
+
+            source = source_file.readline()
+            target = target_file.readline()
+            counter = 0
+            while source:
+                if counter % 100000 == 0:
+                    print("  reading data line %d" % counter)
+                    sys.stdout.flush()
+                    
+                if source.strip() == '':
+                    source_ids = []
+                else:
+                    source_ids = np.fromstring(source,dtype=int,sep=' ').tolist()[::-1]
+                if target.strip() == '':
+                    target_ids = []
+                else:
+                    target_ids = np.fromstring(target,dtype=int,sep=' ').tolist()
+
+                target_ids.append(data_utils.EOS_ID)
+                
+                success = False
+                for bucket_id, (source_size, target_size) in enumerate(_buckets):
+                    if len(source_ids) <= source_size and len(target_ids) <= target_size:
+                        order.append((bucket_id, len(data_set[bucket_id]), counter))
+                        data_set[bucket_id].append([source_ids, target_ids])
+                        success = True                        
+                        break
+
+                if not success:
+                    mylog("failed source length {}".format(len(source_ids)))
+
+                source, target = source_file.readline(), target_file.readline()
+                counter += 1
+
+    return data_set, order, counter
+
+
+
 
 def get_device_address(s):
     add = []
@@ -277,7 +366,11 @@ def parsing_flags(_FLAGS):
     mkdir(_FLAGS.summary_dir)
     mkdir(_FLAGS.decode_output_dir)
 
-    if _FLAGS.mode == "BEAM_DECODE":
+    _FLAGS.forward_only = False
+    
+    if _FLAGS.mode in ["BEAM_DECODE",'FORCE_DECODE']:
+        _FLAGS.forward_only = True
+        
         _FLAGS.decode_output_id = _FLAGS.decode_output.split("/")[-1].split(".")[0]
         _FLAGS.decode_output_test_id_dir = os.path.join(_FLAGS.decode_output_dir, _FLAGS.decode_output_id)
         
@@ -307,5 +400,8 @@ def parsing_flags(_FLAGS):
     else:
         _FLAGS.with_fsa = False
 
+    # detect conflict options:
+    assert(_FLAGS.mode == 'FORCE_DECODE' or not _FLAGS.check_attention)
+        
         
     log_flags(_FLAGS)

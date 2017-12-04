@@ -3,7 +3,9 @@
 import sys
 import os
 import pandas as pd
+import re
 
+p = re.compile(".*\[CHECKPOINT ([0-9]+) STEP [0-9]+\] Learning_rate: ([\.0-9]+) Dev_ppx: ([\.0-9]+) Train_ppx: ([\.0-9]+) .*")
 
 def process_file(path):
     f = open(os.path.join(path,'log.TRAIN.txt'))
@@ -16,10 +18,10 @@ def process_file(path):
     d['_train'] = 0.0
     for line in f:
         if 'Dev_ppx' in line:
-            ll = line.split()
-            d['epoch'] = int(ll[1])
-            d['dev'] = float(ll[-3])
-            d['train'] = float(ll[-1])
+            m = p.match(line)
+            d['epoch'] = int(m.group(1))
+            d['dev'] = float(m.group(3))
+            d['train'] = float(m.group(4))
             if d['_dev'] > d['dev']:
                 d['_epoch'] = d['epoch']
                 d['_dev'] = d['dev']

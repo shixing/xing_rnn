@@ -78,7 +78,9 @@ def create_model(session, run_options, run_metadata):
                                     n_samples = FLAGS.n_samples,
                                     attention_style = FLAGS.attention_style,
                                     attention_scale = FLAGS.attention_scale,
-                                    num_models = num_models
+                                    num_models = num_models,
+                                    tie_input_output_embedding = FLAGS.tie_input_output_embedding,
+                                    variational_dropout = FLAGS.variational_dropout
                          )
 
     ckpt = tf.train.get_checkpoint_state(FLAGS.saved_model_dir)
@@ -355,7 +357,7 @@ def evaluate(sess, model, data_set):
 
     for sources, inputs, outputs, weights, bucket_id in ite:
         
-        L = model.step(sess, sources, inputs, outputs, weights, bucket_id, forward_only = True)
+        L, _ = model.step(sess, sources, inputs, outputs, weights, bucket_id, forward_only = True)
 
         loss += L
         n_steps += 1

@@ -53,7 +53,8 @@ class SeqModelDistributed:
                  with_sampled_softmax = False,
                  attention_style = "additive",
                  attention_scale = True,
-                 num_models = 4
+                 num_models = 4,
+                 tie_input_output_embedding = False
                  ):
         
         '''
@@ -107,7 +108,8 @@ class SeqModelDistributed:
                         attention_style = attention_style,
                         attention_scale = attention_scale,
                         standalone = False,  # ! do not init the optimizer now
-                        n_distributed_models = self.num_models
+                        n_distributed_models = self.num_models,
+                        tie_input_output_embedding = tie_input_output_embedding
                     )
                     
                     self.models.append(seqModel)

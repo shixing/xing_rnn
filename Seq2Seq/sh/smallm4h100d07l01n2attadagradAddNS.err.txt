@@ -1,0 +1,4 @@
+  File "..//py/run.py", line 90
+    mrt = FLAGS.minimum_risk_training
+      ^
+SyntaxError: invalid syntax

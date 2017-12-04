@@ -3,13 +3,22 @@ import sys
 
 class Jobs:
 
-    def __init__(self,data_dir,hours=1,machine_type="cpu8",root_dir=None,job_dir=None,per_gpu=None):
+    def __init__(self,
+                 data_dir,
+                 root_dir=None,
+                 job_dir=None,
+                 hpc_hours=1,
+                 hpc_machine_type="cpu8",
+                 per_gpu = False,
+                 num_gpus_per_task = 1,
+                 num_gpus_per_machine = 6
+    ):
 
         self.head="""
 #!/bin/bash
 #PBS -q __queue__
 #PBS -l walltime=__hour__:00:00
-#PBS -l __machine_type__
+#PBS -l __hpc_machine_type__
 
 ROOT_DIR=__root_dir__
 PY=$ROOT_DIR/py/run.py
@@ -25,6 +34,7 @@ TEST_PATH_FROM=$DATA_DIR/test.src
 TEST_PATH_TO=$DATA_DIR/test.tgt
 DECODE_OUTPUT=$MODEL_DIR/decode_output/__decode_id__.output
 BLEU_OUTPUT=$MODEL_DIR/decode_output/__decode_id__.bleu
+FORCE_DECODE_OUTPUT=$MODEL_DIR/decode_output/__decode_id__.force_decode
 
 source /home/nlg-05/xingshi/sh/init_tensorflow.sh
 
@@ -32,19 +42,19 @@ __GPU_V__
 
 __cmd__
 """
-        self.hours = hours
-        self.machine_type = machine_type
+        self.hpc_hours = hpc_hours
+        self.hpc_machine_type = hpc_machine_type
         # set machine type
-        if self.machine_type == "cpu8":
+        if self.hpc_machine_type == "cpu8":
             self.queue = "isi"
             self.nodes_str = "nodes=1:ppn=8"
-        elif self.machine_type == "cpu12":
+        elif self.hpc_machine_type == "cpu12":
             self.queue = "isi"
             self.nodes_str = "nodes=1:ppn=8"
-        elif self.machine_type == "gpu2":
+        elif self.hpc_machine_type == "gpu2":
             self.queue = "isi"
             self.nodes_str = "nodes=1:ppn=16:gpus=2:shared"
-        elif self.machine_type == "gpu4":
+        elif self.hpc_machine_type == "gpu4":
             self.queue = "isi80"
             self.nodes_str = "nodes=1:ppn=16:gpus=4:shared"
 
@@ -60,7 +70,10 @@ __cmd__
 
         self.data_dir = data_dir
 
-        self.head = self.head.replace("__data_dir__",self.data_dir).replace("__queue__",self.queue).replace("__hour__", str(self.hours)).replace("__machine_type__",self.nodes_str).replace("__root_dir__", self.root_dir)
+        self.num_gpus_per_task = num_gpus_per_task
+        self.num_gpus_per_machine = num_gpus_per_machine
+
+        self.head = self.head.replace("__data_dir__",self.data_dir).replace("__queue__",self.queue).replace("__hour__", str(self.hpc_hours)).replace("__hpc_machine_type__",self.nodes_str).replace("__root_dir__", self.root_dir)
 
         # per gpu 
         self.per_gpu = per_gpu
@@ -186,7 +199,19 @@ __cmd__
                 return "", "fsa", "--individual_fsa {}".format(val)
             else:
                 return "","",""
-        
+
+        def tie_input_output_embedding(val):
+            if val:
+                return "tie","","--tie_input_output_embedding True"
+            else:
+                return "","",""
+
+        def variational_dropout(val):
+            if val:
+                return "VD","","--variational_dropout True"
+            else:
+                return "","",""
+            
         self.keys= ["name",
                     "batch_size",
                     "size",
@@ -216,7 +241,9 @@ __cmd__
                     "min_ratio",
                     "max_ratio",
                     "fsa_path",
-                    "individual_fsa"
+                    "individual_fsa",
+                    "tie_input_output_embedding",
+                    "variational_dropout"
         ]
         
         self.funcs = {"name":name,
@@ -248,7 +275,9 @@ __cmd__
                       "min_ratio":min_ratio,
                       "max_ratio":max_ratio,
                       "fsa_path": fsa_path,
-                      "individual_fsa":individual_fsa
+                      "individual_fsa":individual_fsa,
+                      "tie_input_output_embedding":tie_input_output_embedding,
+                      "variational_dropout":variational_dropout
 
         }
 
@@ -275,8 +304,9 @@ __cmd__
                                "fromScratch":True,
                                "preprocess_data":True,
                                "checkpoint_frequency":2,
-                               "checkpoint_steps":0
-
+                               "checkpoint_steps":0,
+                               "tie_input_output_embedding":False,
+                               "variational_dropout":False
                          }
 
         self.train_template_dist = {"name":"enfr10k",
@@ -302,7 +332,9 @@ __cmd__
                                     "fromScratch":True,
                                     "preprocess_data":True,
                                     "checkpoint_frequency":2,
-                                    "checkpoint_steps":0
+                                    "checkpoint_steps":0,
+                                    "tie_input_output_embedding":False,
+                                    "variational_dropout":False
         }
 
         self.decode_template = {"name":"enfr10k",
@@ -323,7 +355,8 @@ __cmd__
                                 "min_ratio": 0.5,
                                 "max_ratio": 1.5,
                                 "fsa_path": "",
-                                "individual_fsa": False
+                                "individual_fsa": False,
+                                "tie_input_output_embedding":False
         }
 
         
@@ -335,6 +368,11 @@ __cmd__
         self.decode_cmd = "python $PY --mode BEAM_DECODE --model_dir $MODEL_DIR \
        --test_path_from $TEST_PATH_FROM --decode_output $DECODE_OUTPUT "
 
+        self.force_decode_cmd = "python $PY --mode FORCE_DECODE --model_dir $MODEL_DIR \
+       --test_path_from $TEST_PATH_FROM --test_path_to $DECODE_OUTPUT --force_decode_output $FORCE_DECODE_OUTPUT --check_attention True "
+
+
+        
         self.bleu_cmd = "perl $BLEU -lc $TEST_PATH_TO < $DECODE_OUTPUT > $BLEU_OUTPUT" + "\ncat $BLEU_OUTPUT"
 
         self.err_redirect = "2>{}.err.txt"
@@ -415,6 +453,12 @@ __cmd__
             cmd = " ".join(cmd)
             return name, dname, cmd
 
+        def get_visible_gpus(task_id):
+            n_task_per_machine = self.num_gpus_per_machine / self.num_gpus_per_task
+            i = task_id % n_task_per_machine
+            gpus = range(self.num_gpus_per_task * i,self.num_gpus_per_task * (i+1))
+            return ",".join([str(x) for x in gpus])
+        
         # generate train
         for i in xrange(len(params)):
             para, decode_params = params[i]
@@ -426,7 +470,7 @@ __cmd__
             content = self.head.replace("__cmd__",cmd)
             content = content.replace("__id__",name)
             if self.per_gpu:
-                content = content.replace("__GPU_V__","export CUDA_VISIBLE_DEVICES={};".format(i % self.per_gpu))
+                content = content.replace("__GPU_V__","export CUDA_VISIBLE_DEVICES={};".format(get_visible_gpus(i)))
             f.write(content)
             f.close()
             
@@ -441,6 +485,15 @@ __cmd__
                 f.write(content)
                 f.close()
 
+                # force_decode
+                fn = "{}/{}.{}.force_decode.sh".format(self.job_dir,name,dname)
+                f = open(fn,'w')
+                cmd = self.force_decode_cmd + dcmd
+                content = self.head.replace("__cmd__",cmd)
+                content = content.replace("__id__",name).replace("__decode_id__","{}".format(dname))
+                f.write(content)
+                f.close()
+                
                 # bleu
                 fn = "{}/{}.{}.bleu.sh".format(self.job_dir,name,dname)
                 f = open(fn,'w')

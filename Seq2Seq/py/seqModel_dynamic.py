@@ -24,8 +24,10 @@ import data_iterator
 
 from attention import Attention, AttentionCellWrapper
 from beam_states import BeamStates
-
+from sampler import SampleCellWrapper
 from logging_helper import mylog, mylog_section, mylog_subsection, mylog_line
+
+import random
 
 class DeviceCellWrapper(tf.nn.rnn_cell.RNNCell):
   def __init__(self, cell, device):
@@ -75,7 +77,14 @@ class SeqModel(object):
                  standalone = True,
                  swap_memory = True,
                  n_distributed_models = 1,
-                 with_fsa = False
+                 with_fsa = False,
+                 dump_lstm = False,
+                 check_attention = False,
+                 tie_input_output_embedding = False,
+                 variational_dropout = False,
+                 mrt = False,
+                 num_sentences_per_batch_in_mrt = 1,
+                 mrt_alpha = 0.005
                  ):
         """Create the model.
         """
@@ -106,13 +115,20 @@ class SeqModel(object):
         self.max_gradient_norm = max_gradient_norm
         self.swap_memory = swap_memory
         self.with_fsa = with_fsa
+        self.dump_lstm = dump_lstm
+        self.check_attention = check_attention
+        self.forward_only = forward_only
+        self.tie_input_output_embedding = tie_input_output_embedding
+        self.variational_dropout = variational_dropout
+        self.mrt = mrt # minimum risk training
+        self.num_sentences_per_batch_in_mrt = num_sentences_per_batch_in_mrt
+        self.mrt_alpha = mrt_alpha
         
         self.global_batch_size = batch_size
         if not standalone:
             self.global_batch_size = batch_size * n_distributed_models
 
         self.first_batch = True
-        
         
         # some parameters
         with tf.device(devices[0]):
@@ -142,16 +158,21 @@ class SeqModel(object):
             
             self.input_embedding = tf.get_variable("input_embedding",[target_vocab_size, size], dtype = dtype)
 
-
             input_plhd = tf.placeholder(tf.int32, shape = [self.batch_size, None], name = "input")
             input_embed = tf.nn.embedding_lookup(self.input_embedding, input_plhd)
             self.inputs = input_plhd
             self.inputs_embed = input_embed
+
+            if self.mrt:
+                # only for sampling
+                self.dummy_inputs = tf.cast(tf.reshape(input_plhd, [self.batch_size,-1,1]),tf.float32)
+                # for mrt training
+                self.bleu_scores = tf.placeholder(tf.float32, shape = [self.batch_size], name = "bleu_scores")
             
             
-        def lstm_cell(device,input_keep_prob = 1.0, output_keep_prob = 1.0):
+        def lstm_cell(device,input_keep_prob = 1.0, output_keep_prob = 1.0, state_keep_prob=1.0, variational_recurrent=False, input_size = None, seed = None):
             cell = tf.contrib.rnn.LSTMCell(size, state_is_tuple=True)
-            cell = tf.contrib.rnn.DropoutWrapper(cell,input_keep_prob = input_keep_prob, output_keep_prob = output_keep_prob)
+            cell = tf.contrib.rnn.DropoutWrapper(cell,input_keep_prob = input_keep_prob, output_keep_prob = output_keep_prob, state_keep_prob = state_keep_prob, variational_recurrent=False, input_size = input_size, seed = None)
             cell = DeviceCellWrapper(cell, device)
             return cell
           
@@ -162,11 +183,18 @@ class SeqModel(object):
         for i in xrange(num_layers):
             input_keep_prob = self.dropoutRate
             output_keep_prob = 1.0
+            state_keep_prob = 1.0
+            input_size = size
+            seed = None
+            if self.variational_dropout:
+              seed = random.randint(1,10000)
+              state_keep_prob = self.dropoutRate
+            
             if i == num_layers - 1:
                 output_keep_prob = self.dropoutRate
             device = devices[i+1]
-            encoder_cells.append(lstm_cell(device,input_keep_prob, 1.0)) # encoder's top layer doesn't need dropout
-            decoder_cells.append(lstm_cell(device,input_keep_prob, output_keep_prob))
+            encoder_cells.append(lstm_cell(device,input_keep_prob, 1.0, state_keep_prob = state_keep_prob, variational_recurrent = self.variational_dropout, input_size = input_size, seed = seed)) # encoder's top layer doesn't need dropout
+            decoder_cells.append(lstm_cell(device,input_keep_prob, output_keep_prob, state_keep_prob = state_keep_prob, variational_recurrent = self.variational_dropout, input_size = input_size, seed = seed)) # encoder's top layer doesn't need dropout
             
         self.encoder_cell = tf.contrib.rnn.MultiRNNCell(encoder_cells, state_is_tuple=True)
         self.decoder_cell = tf.contrib.rnn.MultiRNNCell(decoder_cells, state_is_tuple=True)
@@ -174,8 +202,10 @@ class SeqModel(object):
         
         # Output Layer
         with tf.device(devices[-1]):
-            
-            self.output_embedding = tf.get_variable("output_embedding",[target_vocab_size, size], dtype = dtype)
+            if self.tie_input_output_embedding:
+                self.output_embedding = self.input_embedding
+            else:
+                self.output_embedding = tf.get_variable("output_embedding",[target_vocab_size, size], dtype = dtype)
             self.output_bias = tf.get_variable("output_bias",[target_vocab_size], dtype = dtype)
 
             # target: 1  2  3  4 
@@ -189,7 +219,9 @@ class SeqModel(object):
         # Attention
         if self.with_attention:
             self.attention = Attention(self)
-                
+
+
+        # softmax + cross_entropy_loss
         if not self.with_sampled_softmax:
             self.softmax_loss_function = lambda x,y: tf.nn.sparse_softmax_cross_entropy_with_logits(logits=x, labels= y)
         else:
@@ -213,16 +245,23 @@ class SeqModel(object):
             # Model with buckets
             self.model_with_buckets(self.sources_embed, self.sources, self.inputs_embed, self.targets, self.target_weights, self.buckets, self.encoder_cell, self.decoder_cell, dtype, self.softmax_loss_function, devices = devices, attention = with_attention)
 
+            # for minimum risk training, draw the sample decoder
+            if self.mrt:
+                self.sample_network(self.sources_embed, self.sources, self.dummy_inputs, self.encoder_cell, self.decoder_cell, dtype, devices = devices, attention = with_attention)
+
             # train
             if not forward_only:
 
-                # params                
                 params = tf.contrib.framework.get_trainable_variables(scope=variable_scope.get_variable_scope())
                 self.params = params
- 
+
                 # unclipped gradients
 
-                self.gradients = tf.gradients(self.losses, params, colocate_gradients_with_ops=True)
+                if not self.mrt:
+                    self.gradients = tf.gradients(self.losses, params, colocate_gradients_with_ops=True)
+                else:
+                    self.gradients = tf.gradients(self.mrt_loss, params, colocate_gradients_with_ops=True)
+                
 
                 # optimizor
                 if optimizer == "adagrad":
@@ -239,8 +278,7 @@ class SeqModel(object):
                     self.gradient_norms = norm
                     self.updates = opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step)
 
-        else: # for beam search
-
+        else: # for beam search;
             self.init_beam_decoder(beam_buckets)
 
         if standalone: 
@@ -265,11 +303,11 @@ class SeqModel(object):
             
 
     ######### Train ##########
-
+    
 
     
     def step(self,session, sources, inputs, targets, target_weights, 
-        bucket_id, forward_only = False, dump_lstm = False):
+             bucket_id, forward_only = False, dump_lstm = False, check_attention = False):
 
         # no matter which bucket_id, we will always use bucket[0]
       
@@ -286,24 +324,28 @@ class SeqModel(object):
         # output_feed
         if forward_only:
             output_feed = [self.losses]
+            addition = {}
+            output_feed.append(addition)
             if dump_lstm:
-                output_feed.append(self.states_to_dump)
-
+                addition['dump_lstm'] = self.states_to_dump
+            if check_attention:
+                # MARK
+                addition['check_attention'] = self.attention_score
         else:
             output_feed = [self.losses]
             output_feed += [self.updates, self.gradient_norms]
 
         outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
 
-        if forward_only or dump_lstm:
-            return outputs[0]
+        if forward_only:
+            return outputs
         else:
             return outputs[0], outputs[2] # only return losses
 
     def get_batch(self, data_set, bucket_id, start_id = None):
         
         # input target sequence has EOS, but no GO or PAD
-        if self.first_batch:
+        if self.first_batch and not self.forward_only:
             self.first_batch = False
             return self.get_batch_max(data_set, bucket_id, start_id = None)
 
@@ -451,6 +493,17 @@ class SeqModel(object):
                 crossent = softmax_loss_function(logits, targets)
                 cost = math_ops.reduce_sum(crossent * weights)
                 cost = cost / math_ops.cast(self.global_batch_size, cost.dtype)
+                if self.mrt:
+                    crossent_batch_length = tf.reshape(crossent * weights, [self.batch_size,-1])
+                    # alpha_log_p = a * log(p(sentence)): shape:[batch_size]
+                    alpha_log_p = - math_ops.reduce_sum(crossent_batch_length, axis = 1) * self.mrt_alpha
+                    alpha_log_p = tf.reshape(alpha_log_p,[self.num_sentences_per_batch_in_mrt,-1])
+                    q = tf.nn.softmax(alpha_log_p)
+                    negative_bleu_scores = - tf.reshape(self.bleu_scores, [self.num_sentences_per_batch_in_mrt,-1])
+                    mrt_loss = math_ops.reduce_sum(q * negative_bleu_scores) / math_ops.cast(self.num_sentences_per_batch_in_mrt, q.dtype)
+                    #mrt_loss = tf.Print(mrt_loss,[crossent_batch_length, weights, alpha_log_p, q, negative_bleu_scores, mrt_loss], summarize = 1000)
+                    #mrt_loss = tf.Print(mrt_loss, [q,negative_bleu_scores], summarize = 100)
+                    self.mrt_loss = mrt_loss
 
         self.logits = logits
         self.losses  = cost
@@ -493,7 +546,7 @@ class SeqModel(object):
 
             self.attention.set_encoder_top_states(top_states_4, top_states_transform_4,encoder_raws)
 
-            attention_cell = AttentionCellWrapper(decoder_cell, self.attention)
+            attention_cell = AttentionCellWrapper(decoder_cell, self.attention, check_attention = self.check_attention)
             attention_device_cell = DeviceCellWrapper(attention_cell,devices[-2])
 
             with tf.variable_scope("decoder"):
@@ -501,10 +554,152 @@ class SeqModel(object):
                 state = attention_cell.zero_attention_state(self.batch_size, encoder_state,self.dtype)
 
                 decoder_outputs, decoder_state = tf.nn.dynamic_rnn(attention_device_cell, decoder_inputs, initial_state = state, swap_memory = self.swap_memory)
+                if self.check_attention:
+                    self.attention_score = decoder_outputs[1]
+                    decoder_outputs = decoder_outputs[0]
 
         return decoder_outputs, decoder_state
             
+    ######### Minimum Risk Training ##########
+    
+    def sample_network(self, sources, sources_raw, dummy_decoder_inputs_raw, encoder_cell, decoder_cell, dtype, devices = None, attention = False):
+        seq2seq_f = None
+        if attention:
+            seq2seq_f = self.sample_attention_seq2seq
+        else:
+            seq2seq_f = self.sample_basic_seq2seq
 
+        with variable_scope.variable_scope(variable_scope.get_variable_scope()):
+            outputs, decoder_state = seq2seq_f(encoder_cell,decoder_cell, sources, sources_raw, dummy_decoder_inputs_raw, dtype, devices)
+
+        self.sampled_outputs = outputs
+        
+    def sample_basic_seq2seq(self, encoder_cell, decoder_cell, encoder_inputs, encoder_raws, dummy_decoder_inputs_raw, dtype, devices = None):
+        # encoder_inputs are embeddings;
+        # dummy_decoder_inputs_raw are indexes, so we need to lookup inside the cell wrapper
+    
+        # initial state
+        with tf.variable_scope("basic_seq2seq"):
+
+            init_state = encoder_cell.zero_state(self.batch_size, dtype)
+
+            with tf.variable_scope("encoder"):
+                encoder_outputs, encoder_state = tf.nn.dynamic_rnn(encoder_cell,encoder_inputs,initial_state = init_state, swap_memory = self.swap_memory)
+                
+            sample_decoder_cell = SampleCellWrapper(decoder_cell, self.input_embedding, self.output_embedding, self.output_bias) 
+            device_sample_decoder_cell = DeviceCellWrapper(sample_decoder_cell,devices[-1])
+            
+            with tf.variable_scope("decoder"):
+                init_state_decoder = sample_decoder_cell.default_init_state(self.batch_size, encoder_state)
+                decoder_outputs, decoder_state = tf.nn.dynamic_rnn(device_sample_decoder_cell, dummy_decoder_inputs_raw, initial_state = init_state_decoder, swap_memory = self.swap_memory)
+
+        return decoder_outputs, decoder_state
+
+    def sample_attention_seq2seq(self, encoder_cell, decoder_cell, encoder_inputs, encoder_raws, dummy_decoder_inputs_raw, dtype, devices = None):
+        # encoder_inputs are embeddings;
+        # dummy_decoder_inputs_raw are indexes, so we need to lookup inside the cell wrapper
+    
+        # initial state
+        with tf.variable_scope("attention_seq2seq"):
+
+            init_state = encoder_cell.zero_state(self.batch_size, dtype)
+
+            with tf.variable_scope("encoder"):
+                encoder_outputs, encoder_state = tf.nn.dynamic_rnn(encoder_cell,encoder_inputs,initial_state = init_state, swap_memory = self.swap_memory)
+                                # calculate a_w_source * h_source
+                top_states_4, top_states_transform_4 = self.attention.get_top_states_transform_4(encoder_outputs)
+
+            self.attention.set_encoder_top_states(top_states_4, top_states_transform_4,encoder_raws)
+
+            attention_cell = AttentionCellWrapper(decoder_cell, self.attention, check_attention = self.check_attention)
+            attention_device_cell = DeviceCellWrapper(attention_cell,devices[-2])
+            sample_decoder_cell = SampleCellWrapper(attention_device_cell, self.input_embedding, self.output_embedding, self.output_bias) 
+            device_sample_decoder_cell = DeviceCellWrapper(sample_decoder_cell,devices[-1])
+            
+            with tf.variable_scope("decoder"):
+                state = attention_cell.zero_attention_state(self.batch_size, encoder_state,self.dtype)
+                init_state_decoder = sample_decoder_cell.default_init_state(self.batch_size, state)
+                decoder_outputs, decoder_state = tf.nn.dynamic_rnn(device_sample_decoder_cell, dummy_decoder_inputs_raw, initial_state = init_state_decoder, swap_memory = self.swap_memory)
+
+        return decoder_outputs, decoder_state
+
+      
+    def mrt_step(self, session, sources, inputs, targets, target_weights, bleu_scores):
+        input_feed = {}
+        input_feed[self.sources.name] = sources
+        input_feed[self.inputs.name] = inputs
+        input_feed[self.targets.name] = targets
+        input_feed[self.target_weights.name] = target_weights
+        input_feed[self.bleu_scores.name] = bleu_scores
+
+        output_feed = [self.mrt_loss, self.updates, self.gradient_norms]
+
+        outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
+
+        return outputs[0], outputs[2]
+
+        
+      
+    def sample_step(self,session, sources, dummy_inputs):
+        input_feed = {}
+        input_feed[self.sources.name] = sources
+        input_feed[self.inputs.name] = dummy_inputs
+
+        output_feed = {}
+        output_feed = [self.sampled_outputs]
+        session.run(self.dropout10_op)
+        outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
+        session.run(self.dropoutAssign_op)
+        return outputs[0]
+    
+    def get_batch_mrt(self, data_set, bucket_id, num_sentences):
+        # return:
+        #    source_input_ids (repeated and padded)
+        #    target_input_ids (just all padded, dummy inputs)
+        #    target_ids (num_sentences, used to calculate BLEU)
+
+
+      
+        num_repeated = int(self.batch_size / num_sentences)
+      
+        source_input_ids, target_input_ids = [], []
+
+        temp_source_seqs = []
+        temp_target_seqs = []
+        
+        source_length = 0
+        target_length = 0
+        
+        for i in xrange(num_sentences):
+
+            source_seq, target_seq = random.choice(data_set[bucket_id])
+
+            if len(source_seq) == 0:
+                # in attention, if all source_seq are PAD, then the denominator of softmax will be sum(exp(-inf)) = 0, so the softmax = nan. To avoid this, we add an UNK in the source.
+                source_seq = [self.UNK_ID]
+
+            temp_source_seqs.append(source_seq)
+            temp_target_seqs.append(target_seq)
+
+            if len(source_seq) > source_length:
+                source_length = len(source_seq)
+            if len(target_seq) > target_length:
+                target_length = len(target_seq)
+                
+        sample_target_length = int(target_length * 1.5)
+        for source_seq, target_seq in zip(temp_source_seqs, temp_target_seqs):
+          
+            source_seq =  [self.PAD_ID] * (source_length - len(source_seq)) + source_seq
+
+            target_seq = [self.PAD_ID] * sample_target_length
+
+            for _ in xrange(num_repeated):
+                source_input_ids.append(source_seq)
+                target_input_ids.append(target_seq)
+        
+        return source_input_ids, target_input_ids, temp_target_seqs
+
+      
     ######### Beam Search ##########
 
 
@@ -878,7 +1073,7 @@ class SeqModel(object):
             states = self.get_hidden_states(i,l,self.num_layers)
             self.states_to_dump.append(states)
 
-
+    ########## Check Attention ##########
 
 
     

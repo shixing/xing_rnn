@@ -1,0 +1,24 @@
+Couldn't import dot_parser, loading of dot files will not be possible.
+2017-11-17 15:03:14.968209: I tensorflow/core/platform/cpu_feature_guard.cc:137] Your CPU supports instructions that this TensorFlow binary was not compiled to use: SSE4.1 SSE4.2 AVX AVX2 FMA
+Traceback (most recent call last):
+  File "..//py/runDistributed.py", line 384, in <module>
+    tf.app.run()
+  File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/platform/app.py", line 48, in run
+    _sys.exit(main(_sys.argv[:1] + flags_passthrough))
+  File "..//py/runDistributed.py", line 379, in main
+    train()
+  File "..//py/runDistributed.py", line 243, in train
+    L, norm = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id)
+  File "/Users/xingshi/Workspace/misc/lstm/tensorflow/xing_rnn/Seq2Seq/py/seqModelDistributed_dynamic.py", line 282, in step
+    outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
+  File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/client/session.py", line 889, in run
+    run_metadata_ptr)
+  File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/client/session.py", line 1120, in _run
+    feed_dict_tensor, options, run_metadata)
+  File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/client/session.py", line 1317, in _do_run
+    options, run_metadata)
+  File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/client/session.py", line 1323, in _do_call
+    return fn(*args)
+  File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/client/session.py", line 1302, in _run_fn
+    status, run_metadata)
+KeyboardInterrupt

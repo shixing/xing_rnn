@@ -24,9 +24,10 @@ from tensorflow.python.ops import variable_scope
 
 class AttentionCellWrapper(tf.nn.rnn_cell.RNNCell):
     
-    def __init__(self, cell, attention):
+    def __init__(self, cell, attention, check_attention = False):
         self._cell = cell
         self._attention = attention
+        self.check_attention = check_attention
 
     @property
     def state_size(self):
@@ -34,11 +35,14 @@ class AttentionCellWrapper(tf.nn.rnn_cell.RNNCell):
     
     @property
     def output_size(self):
-        return self._cell.output_size
+        if self.check_attention:
+            return (self._cell.output_size, self._attention.source_length)
+        else:
+            return self._cell.output_size
 
     def zero_attention_state(self, batch_size, state, dtype):
         # at the end of state, append a zero state
-        _zero_state = array_ops.zeros([batch_size, self.output_size], dtype=dtype)
+        _zero_state = array_ops.zeros([batch_size, self._cell.output_size], dtype=dtype)
         return (state,_zero_state)
     
     def __call__(self, inputs, state, scope=None):
@@ -51,10 +55,13 @@ class AttentionCellWrapper(tf.nn.rnn_cell.RNNCell):
         lstm_output, new_lstm_state = self._cell(new_inputs, lstm_state, scope=scope)
 
         # do the attention 
-        context = self._attention.get_context(lstm_output)
+        context, attention_score = self._attention.get_context(lstm_output)
         h_att = self._attention.get_h_att(lstm_output, context)
-        
-        return h_att, (new_lstm_state, h_att)
+
+        if self.check_attention:
+            return (h_att, attention_score) , (new_lstm_state, h_att)
+        else:
+            return h_att , (new_lstm_state, h_att)
 
         
         
@@ -73,7 +80,7 @@ class Attention:
         self.top_states_4 = top_states_4
         self.top_states_transform_4 = top_states_transform_4
         self.encoder_raws_matrix = encoder_raws_matrix
-
+        self.source_length = tf.shape(self.top_states_4)[1]
         
     def declare_parameter(self):
         with tf.variable_scope("attention_seq2seq"):
@@ -140,11 +147,11 @@ class Attention:
 
         s = self.mask_score(s,encoder_raws_matrix)                
         a = tf.nn.softmax(s) 
-
+        
         # context = a * h_source
         context = tf.reduce_sum(tf.reshape(a, [self.model.batch_size,-1,1,1]) * top_states_4, [1,2])
 
-        return context
+        return context, a
 
     
     def get_context_additive(self, query, top_states_4,  top_states_transform_4, encoder_raws_matrix):
@@ -161,12 +168,12 @@ class Attention:
         #a = softmax( a_v * tanh(...))
         s = tf.reduce_sum(normed_v * tf.tanh(top_states_transform_4 + query_transform_4),[2,3]) #[batch_size, source_length]
         s = self.mask_score(s,encoder_raws_matrix)                
-        a = tf.nn.softmax(s) 
+        a = tf.nn.softmax(s)
         
         # context = a * h_source
         context = tf.reduce_sum(tf.reshape(a, [self.model.batch_size, -1,1,1]) * top_states_4, [1,2])
         
-        return context
+        return context, a
 
     def feed_input(self, inputs, pre_h_att):
         return tf.add(tf.add(tf.matmul(inputs, self.fi_w_x), tf.matmul(pre_h_att, self.fi_w_att)), self.fi_b)
