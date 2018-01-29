@@ -92,7 +92,8 @@ def create_model(session, _FLAGS, run_options=None, run_metadata=None):
                          variational_dropout = _FLAGS.variational_dropout,
                          mrt = _FLAGS.minimum_risk_training,
                          num_sentences_per_batch_in_mrt = _FLAGS.num_sentences_per_batch_in_mrt,
-                         mrt_alpha = _FLAGS.mrt_alpha
+                         mrt_alpha = _FLAGS.mrt_alpha,
+                         normalize_ht_radius = FLAGS.normalize_ht_radius
                          )
 
     ckpt = tf.train.get_checkpoint_state(_FLAGS.saved_model_dir)
@@ -676,7 +677,7 @@ def train_mrt():
                         f.write(ctf)
                     exit()
                     
-            if current_step % steps_per_checkpoint == 1:
+            if current_step % steps_per_checkpoint == 0:
 
                 i_checkpoint = int(current_step / steps_per_checkpoint)
                 
@@ -707,14 +708,15 @@ def train_mrt():
 
                 # save best model based on bleu
                 if dev_bleu_score > highest_bleu:
-                    patience = FLAGS.patience
-                    highest_bleu = dev_bleu_score
-                    low_ppx_step = current_step
                     checkpoint_path = os.path.join(FLAGS.saved_model_dir, "best")
                     s = time.time()
                     model.best_saver.save(sess, checkpoint_path, global_step=0, write_meta_graph = False)
                     msg = "Best Model saved using {:.4f} sec at {}".format(time.time()-s, checkpoint_path)
                     mylog_line(sect_name, msg)
+                    patience = FLAGS.patience
+                    highest_bleu = dev_bleu_score
+                    low_ppx_step = current_step
+
                 else:
                     patience -= 1
 
@@ -940,7 +942,99 @@ def beam_decode():
 
         # dump to file
         data_utils.ids_to_tokens(targets_in_original_order, to_vocab_path, FLAGS.decode_output)
+
+
+def beam_decode_serve_init():
+    # return session and model
+
+    from_test = None
+
+    from_vocab_path, to_vocab_path, real_vocab_size_from, real_vocab_size_to = data_utils.get_vocab_info(FLAGS.data_cache_dir)
+    
+    FLAGS._buckets = _buckets
+    FLAGS._beam_buckets = _beam_buckets
+    FLAGS.real_vocab_size_from = real_vocab_size_from
+    FLAGS.real_vocab_size_to = real_vocab_size_to
+
+    from_vocab, _ = data_utils.initialize_vocabulary(from_vocab_path)
+    _, to_vocab = data_utils.initialize_vocabulary(to_vocab_path)
+    
+    # reports
+    mylog("from_vocab_size: {}".format(FLAGS.from_vocab_size))
+    mylog("to_vocab_size: {}".format(FLAGS.to_vocab_size))
+    mylog("_beam_buckets: {}".format(FLAGS._beam_buckets))
+    mylog("BEAM_DECODE:")
+
+    config = tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)
+    config.gpu_options.allow_growth = FLAGS.allow_growth
+
+    sess = tf.Session(config=config)
+    
+    mylog("Creating Model")
+    model = create_model(sess, FLAGS, None, None)
+    show_all_variables()
+    sess.run(model.dropoutRate.assign(1.0))
+
+    def decode_one_sentence(source):
+        # Source is assumed tokenized
+        tokens = data_utils.sentence_to_token_ids(source, from_vocab)
+        tokens = tokens[::-1]
+        bucket_id = 0 # bucket_id will be ignored anyway
+        source_inputs = [tokens] * FLAGS.batch_size
+        length = len(tokens)
+        line_id = 0
+
+        mylog("--- decoding sent ---")
+            
+        beam = Beam(sess,
+                    model,
+                    source_inputs,
+                    length,
+                    bucket_id,
+                    FLAGS.beam_size,
+                    FLAGS.min_ratio,
+                    FLAGS.max_ratio,
+                    FLAGS.print_beam
+        )
                 
+        best_sentence, best_score = beam.decode()
+        if len(best_sentence) == 0:
+            best_sentence = [2]
+        # dump to file
+        sent = data_utils.id_to_tokens(best_sentence, to_vocab)
+        return sent
+
+    return decode_one_sentence
+
+def beam_decode_serve():
+    from flask import Flask
+    from flask.ext.restful import reqparse, abort, Api, Resource
+    from flask import request, make_response
+    import json
+
+    app = Flask(__name__)
+    api = Api(app)
+    
+    decode_one_sentence = beam_decode_serve_init()
+    
+    class Seq2Seq(Resource):
+        def get(self):
+            parser = reqparse.RequestParser()
+            parser.add_argument("source")
+            args = parser.parse_args()
+            source = args['source']
+            source = source.encode("utf8")
+            sent = decode_one_sentence(source)
+            d = {}
+            d['output'] = sent
+            json_str = json.dumps(d, ensure_ascii=False)
+            response = make_response(json_str)
+            return response
+        
+    api.add_resource(Seq2Seq, "/internal_api/seq2seq")
+
+    return app
+
 
         
 def dump_lstm():
@@ -1068,7 +1162,11 @@ def main(_):
     if FLAGS.mode == "BEAM_DECODE":
         FLAGS.batch_size = FLAGS.beam_size
         FLAGS.beam_search = True
-        beam_decode()
+        if FLAGS.serve:
+            app = beam_decode_serve()
+            app.run(port = FLAGS.serve_port, threaded=True, debug=True)
+        else:
+            beam_decode()
     
     logging.shutdown()
 

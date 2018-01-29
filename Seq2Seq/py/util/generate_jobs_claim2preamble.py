@@ -4,7 +4,7 @@ from job import Jobs
 
 def distributed():
     
-    j = Jobs("claim2preamble",hours = 10, machine_type = "gpu4")
+    j = Jobs("claim2preamble",hpc_machine_type = "gpu2", per_gpu = True, num_gpus_per_task = 4, num_gpus_per_machine = 6, root_dir = "/Users/xingshi/Workspace/misc/specifio/Claim2Preamble")
     grids = {"name":["c2p"],
              "batch_size":[100],
              "size": [500],
@@ -29,9 +29,17 @@ def distributed():
              "checkpoint_steps":[0]
     }
 
-    beams = [12]
+
+    decode_grids = {
+        "beam_size":[12],
+        "max_ratio":[1.0],
+        "min_ratio":[0.0],
+        "max_source_length":[400]
+    }
     
-    j.generate(grids,beams,dist=True)
+    
+    j.generate(grids,decode_grids,dist=True)
+
 
         
 

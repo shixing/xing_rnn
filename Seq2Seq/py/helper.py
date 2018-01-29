@@ -132,7 +132,10 @@ def declare_flags(distributed = False):
     tf.app.flags.DEFINE_float("min_ratio", 0.5, "min ratio: the output should be at least source_length*min_ratio long.")
     tf.app.flags.DEFINE_float("max_ratio", 1.5, "max ratio: the output should be at most source_length*max_ratio long")
     tf.app.flags.DEFINE_boolean("load_from_best", True, "whether to load best model to decode. If False, it will load the last model saved.")
+    tf.app.flags.DEFINE_boolean("serve", False, "whether to run as a serving mode")
+    tf.app.flags.DEFINE_integer("serve_port", 10210, "the port for serving mode")
 
+    
     # for FSA
     tf.app.flags.DEFINE_string("fsa_path", None, "fsa path if decode with fsa.")
     tf.app.flags.DEFINE_float("fsa_weight", 1.0, "the weight of the fsa weight.")
@@ -168,11 +171,13 @@ def declare_flags(distributed = False):
 
     # minimum risk training
     tf.app.flags.DEFINE_boolean("minimum_risk_training", False, "Use minimum risk trainning?")
-    tf.app.flags.DEFINE_integer("num_sentences_per_batch_in_mrt", 5, "number of sentences per batch in mrt training. If batch_size = 100, and num_sentences_per_batch_in_mrt = 5, then we will sample 20 sentences for each example in MRT training.")
+    tf.app.flags.DEFINE_integer("num_sentences_per_batch_in_mrt", 1, "number of sentences per batch in mrt training. If batch_size = 100, and num_sentences_per_batch_in_mrt = 5, then we will sample 20 sentences for each example in MRT training.")
     tf.app.flags.DEFINE_boolean("include_reference", True, "Whether include the reference sentence in sampled sentences;")
     tf.app.flags.DEFINE_float("mrt_alpha", 0.005, "mrt_alpha")
 
-
+    # normalize the final ht
+    tf.app.flags.DEFINE_float("normalize_ht_radius", 0.0, "radius of normalize_ht_radius")
+    
 
 
 
@@ -370,16 +375,21 @@ def parsing_flags(_FLAGS):
     
     if _FLAGS.mode in ["BEAM_DECODE",'FORCE_DECODE']:
         _FLAGS.forward_only = True
-        
-        _FLAGS.decode_output_id = _FLAGS.decode_output.split("/")[-1].split(".")[0]
-        _FLAGS.decode_output_test_id_dir = os.path.join(_FLAGS.decode_output_dir, _FLAGS.decode_output_id)
-        
-        mkdir(_FLAGS.decode_output_test_id_dir)
 
-        if _FLAGS.individual_fsa:
-            _FLAGS.fsa_path = os.path.join(_FLAGS.decode_output_test_id_dir, _FLAGS.decode_output_id+".fsa")
+        if _FLAGS.serve:
+            log_path = os.path.join(_FLAGS.model_dir,"log.{}.serve.txt".format(_FLAGS.mode))
+            
+        else:
         
-        log_path = os.path.join(_FLAGS.model_dir,"log.{}.{}.txt".format(_FLAGS.mode, _FLAGS.decode_output_id))
+            _FLAGS.decode_output_id = _FLAGS.decode_output.split("/")[-1].split(".")[0]
+            _FLAGS.decode_output_test_id_dir = os.path.join(_FLAGS.decode_output_dir, _FLAGS.decode_output_id)
+
+            mkdir(_FLAGS.decode_output_test_id_dir)
+
+            if _FLAGS.individual_fsa:
+                _FLAGS.fsa_path = os.path.join(_FLAGS.decode_output_test_id_dir, _FLAGS.decode_output_id+".fsa")
+
+            log_path = os.path.join(_FLAGS.model_dir,"log.{}.{}.txt".format(_FLAGS.mode, _FLAGS.decode_output_id))
         
     else:
         log_path = os.path.join(_FLAGS.model_dir,"log.{}.txt".format(_FLAGS.mode))

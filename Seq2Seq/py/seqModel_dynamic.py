@@ -84,7 +84,8 @@ class SeqModel(object):
                  variational_dropout = False,
                  mrt = False,
                  num_sentences_per_batch_in_mrt = 1,
-                 mrt_alpha = 0.005
+                 mrt_alpha = 0.005,
+                 normalize_ht_radius = 0.0
                  ):
         """Create the model.
         """
@@ -123,11 +124,12 @@ class SeqModel(object):
         self.mrt = mrt # minimum risk training
         self.num_sentences_per_batch_in_mrt = num_sentences_per_batch_in_mrt
         self.mrt_alpha = mrt_alpha
+        self.normalize_ht_radius = normalize_ht_radius
         
         self.global_batch_size = batch_size
         if not standalone:
             self.global_batch_size = batch_size * n_distributed_models
-
+            
         self.first_batch = True
         
         # some parameters
@@ -479,6 +481,11 @@ class SeqModel(object):
 
             # flat _hts targets weights
             _hts = tf.reshape(_hts, [-1, self.size]) #[batch_size * time_steps , size]
+            # normalize the ht;
+            if self.normalize_ht_radius != 0.0:
+                mylog("Normalize_ht: radius: {}".format(self.normalize_ht_radius))
+                _hts = tf.nn.l2_normalize(_hts, 1) * self.normalize_ht_radius
+            
             targets = tf.reshape(targets, [-1])
             weights = tf.reshape(weights, [-1])
             
@@ -836,6 +843,10 @@ class SeqModel(object):
 
             # flat _ht
             _ht = tf.reshape(_ht, [-1, self.size]) # [batch_size, size]
+            if self.normalize_ht_radius != 0.0:
+                mylog("Normalize_ht: radius: {}".format(self.normalize_ht_radius))
+                _ht = tf.nn.l2_normalize(_ht, 1) * self.normalize_ht_radius
+
             # logits
             _softmax = tf.nn.softmax(tf.add(tf.matmul(_ht, self.output_embedding, transpose_b = True), self.output_bias)) 
 

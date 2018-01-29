@@ -7,7 +7,7 @@ def corpus_level_bleu(references, targets):
     bleu_score = nltk.translate.bleu_score.corpus_bleu(references, targets)
     return bleu_score
 
-def sentence_level_bleu(references, samples):
+def sentence_level_bleu(references, samples, include_reference = True):
     # Inputs:
     # reference:
     #   [[1,3,5,2] * n], shape: [n,l1]
@@ -34,7 +34,7 @@ def sentence_level_bleu(references, samples):
         ref_str = [str(x) for x in reference[:-1]]
         for j in xrange(r):
             sample = samples[i * r + j]
-            if j == 0:
+            if include_reference and j == 0:
                 sample = reference
             sample_str = []
             new_sample = []

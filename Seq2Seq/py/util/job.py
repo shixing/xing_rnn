@@ -211,7 +211,25 @@ __cmd__
                 return "VD","","--variational_dropout True"
             else:
                 return "","",""
-            
+
+        def minimum_risk_training(val):
+            if val:
+                return "MRT","","--minimum_risk_training True"
+            else:
+                return "","",""
+
+        def num_sentences_per_batch_in_mrt(val):
+            return "s{}".format(val),"","--num_sentences_per_batch_in_mrt {}".format(val)
+
+        def mrt_alpha(val):
+            return "alpha{}".format(val), "", "--mrt_alpha {}".format(val)
+
+        def normalize_ht_radius(val):
+            if val != 0.0:
+                return "r{}".format(val), "", "--normalize_ht_radius {}".format(val)
+            else:
+                return "","",""
+        
         self.keys= ["name",
                     "batch_size",
                     "size",
@@ -243,7 +261,11 @@ __cmd__
                     "fsa_path",
                     "individual_fsa",
                     "tie_input_output_embedding",
-                    "variational_dropout"
+                    "variational_dropout",
+                    "minimum_risk_training",
+                    "num_sentences_per_batch_in_mrt",
+                    "mrt_alpha",
+                    "normalize_ht_radius"
         ]
         
         self.funcs = {"name":name,
@@ -277,8 +299,11 @@ __cmd__
                       "fsa_path": fsa_path,
                       "individual_fsa":individual_fsa,
                       "tie_input_output_embedding":tie_input_output_embedding,
-                      "variational_dropout":variational_dropout
-
+                      "variational_dropout":variational_dropout,
+                      "minimum_risk_training":minimum_risk_training,
+                      "num_sentences_per_batch_in_mrt":num_sentences_per_batch_in_mrt,
+                      "mrt_alpha":mrt_alpha,
+                      "normalize_ht_radius":normalize_ht_radius
         }
 
         self.train_template = {"name":"enfr10k",
@@ -306,7 +331,11 @@ __cmd__
                                "checkpoint_frequency":2,
                                "checkpoint_steps":0,
                                "tie_input_output_embedding":False,
-                               "variational_dropout":False
+                               "variational_dropout":False,
+                               "minimum_risk_training":False,
+                               "num_sentences_per_batch_in_mrt":1,
+                               "mrt_alpha":0.005,
+                               "normalize_ht_radius":0.0
                          }
 
         self.train_template_dist = {"name":"enfr10k",
@@ -445,6 +474,7 @@ __cmd__
                 func = self.funcs[key]
                 val = paras[key]
                 n,d,c = func(val)
+                
                 name += n
                 dname += d
                 cmd.append(c)

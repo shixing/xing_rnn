@@ -86,5 +86,3 @@ class DataIterator:
  
             yield source_inputs, target_inputs, target_outputs, target_weights, bucket_id, line_id
 
-            
-            

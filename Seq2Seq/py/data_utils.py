@@ -365,6 +365,12 @@ def load_word2index(vocab_path):
     return d
 
 
+def id_to_tokens(line, to_vocab):
+    # to_vocab: a list
+    sent = " ".join(to_vocab[x] for x in line[:-1])
+    return sent
+  
+  
 def ids_to_tokens(lines, to_vocab_path, dest_path):
     d = []
     f = open(to_vocab_path)
