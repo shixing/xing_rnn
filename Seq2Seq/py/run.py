@@ -917,7 +917,9 @@ def beam_decode():
                         FLAGS.beam_size,
                         FLAGS.min_ratio,
                         FLAGS.max_ratio,
-                        FLAGS.print_beam
+                        FLAGS.print_beam,
+                        length_alpha = FLAGS.length_alpha,
+                        coverage_beta = FLAGS.coverage_beta
             )
 
             if FLAGS.with_fsa:

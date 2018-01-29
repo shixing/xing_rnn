@@ -135,6 +135,9 @@ def declare_flags(distributed = False):
     tf.app.flags.DEFINE_boolean("serve", False, "whether to run as a serving mode")
     tf.app.flags.DEFINE_integer("serve_port", 10210, "the port for serving mode")
 
+    tf.app.flags.DEFINE_float("length_alpha", 0.0, "the alpha value for the length normalization")
+    tf.app.flags.DEFINE_boolean("coverage_beta", 0.0, "the beta value for the coverage score")
+
     
     # for FSA
     tf.app.flags.DEFINE_string("fsa_path", None, "fsa path if decode with fsa.")
