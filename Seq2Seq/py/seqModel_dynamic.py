@@ -85,7 +85,8 @@ class SeqModel(object):
                  mrt = False,
                  num_sentences_per_batch_in_mrt = 1,
                  mrt_alpha = 0.005,
-                 normalize_ht_radius = 0.0
+                 normalize_ht_radius = 0.0,
+                 layer_normalization = False
                  ):
         """Create the model.
         """
@@ -125,6 +126,7 @@ class SeqModel(object):
         self.num_sentences_per_batch_in_mrt = num_sentences_per_batch_in_mrt
         self.mrt_alpha = mrt_alpha
         self.normalize_ht_radius = normalize_ht_radius
+        self.layer_normalization = layer_normalization
         
         self.global_batch_size = batch_size
         if not standalone:
@@ -173,8 +175,11 @@ class SeqModel(object):
             
             
         def lstm_cell(device,input_keep_prob = 1.0, output_keep_prob = 1.0, state_keep_prob=1.0, variational_recurrent=False, input_size = None, seed = None):
-            cell = tf.contrib.rnn.LSTMCell(size, state_is_tuple=True)
-            cell = tf.contrib.rnn.DropoutWrapper(cell,input_keep_prob = input_keep_prob, output_keep_prob = output_keep_prob, state_keep_prob = state_keep_prob, variational_recurrent=False, input_size = input_size, seed = None)
+            if self.layer_normalization:
+                cell = tf.contrib.rnn.LSTMCell(size, state_is_tuple=True)
+            else:
+                cell = tf.contrib.rnn.LayerNormBasicLSTMCell(size)
+            cell = tf.contrib.rnn.DropoutWrapper(cell,input_keep_prob = input_keep_prob, output_keep_prob = output_keep_prob, state_keep_prob = state_keep_prob, variational_recurrent=variational_dropout, dtype=self.dtype, input_size = input_size, seed = seed)
             cell = DeviceCellWrapper(cell, device)
             return cell
           

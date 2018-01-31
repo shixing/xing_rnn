@@ -93,7 +93,8 @@ def create_model(session, _FLAGS, run_options=None, run_metadata=None):
                          mrt = _FLAGS.minimum_risk_training,
                          num_sentences_per_batch_in_mrt = _FLAGS.num_sentences_per_batch_in_mrt,
                          mrt_alpha = _FLAGS.mrt_alpha,
-                         normalize_ht_radius = FLAGS.normalize_ht_radius
+                         normalize_ht_radius = FLAGS.normalize_ht_radius,
+                         layer_normalization = FLAGS.layer_normalization
                          )
 
     ckpt = tf.train.get_checkpoint_state(_FLAGS.saved_model_dir)

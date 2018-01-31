@@ -76,7 +76,9 @@ def declare_flags(distributed = False):
                               "Clip gradients to this norm.")
     tf.app.flags.DEFINE_float("keep_prob", 0.5, "1 - dropout rate.")
     tf.app.flags.DEFINE_boolean("variational_dropout", False, "variational_dropout")
-
+    tf.app.flags.DEFINE_boolean("layer_normalization", False, "layer normalization")
+    
+    
     tf.app.flags.DEFINE_integer("batch_size", 64,
                                 "Batch size to use during training.")
 
