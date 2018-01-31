@@ -34,6 +34,19 @@ class BeamCell:
         self.beam_index = beam_index
         self.fsa_state = fsa_state
 
+class FinishedEntry:
+    def __init__(self, finished_sentence, log_probability, coverage_score = 0.0):
+        self.finished_sentence = finished_sentence
+        self.log_probability = log_probability
+        self.coverage_score = coverage_score
+        self.normalized_score = self.log_probability
+        
+    def get_normalized_score(self, length_alpha = 0.0, coverage_beta = 0.0):
+        self.normalized_score = self.log_probability / np.power((5 + len(self.finished_sentence)) / 6 , length_alpha) + coverage_beta * self.coverage_score
+
+    def __repr__(self):
+        return "{} {} {} {}".format(self.finished_sentence, self.log_probability, self.coverage_score, self.normalized_score)
+        
 class Beam:
     # to decode one sentence
     
@@ -44,6 +57,10 @@ class Beam:
         self.print_beam = print_beam
         self.length_alpha = length_alpha
         self.coverage_beta = coverage_beta
+        if self.coverage_beta > 0.0:
+            self.check_attention = True
+        else:
+            self.check_attention = False
 
         # variable
         self.bucket_id = bucket_id
@@ -57,6 +74,8 @@ class Beam:
         # for generation sentences
         self.scores = [0.0] * self.beam_size
         self.sentences = [[] * self.beam_size]
+        if self.check_attention:
+            self.attention_scores = [np.zeros((length)) for _ in xrange(self.beam_size)]
 
         # the variable for each step  
         self.beam_parent = range(self.beam_size)
@@ -85,32 +104,33 @@ class Beam:
         
     def decode(self):
         for i in xrange(self.max_target_length):
-            # rnn_step 
-            top_value, top_index, eos_value = self.rnn_step(i)
+            # rnn_step
+            if self.check_attention:
+                top_value, top_index, eos_value, attention_score = self.rnn_step(i)
+            else:
+                top_value, top_index, eos_value = self.rnn_step(i)
+                attention_score = None
 
             # top_beam_cells = [BeamCell]
             top_beam_cells = self.get_top_beam_cells(i, top_value, top_index, eos_value)
             # grow sentence 
-            self.grow_sentence(i, top_beam_cells)
+            self.grow_sentence(i, top_beam_cells, attention_score = attention_score)
 
             if self.valid_beam_size_last_step <= 0:
                 break
 
         # add the length penalty
         for i in xrange(len(self.results)):
-            sentence, score = self.results[i]
-            normalized_score = score / np.power((5 + len(sentence)) / 6 , self.length_alpha)
-            self.results[i] = (sentence, normalized_score, score)
-            
+            self.results[i].get_normalized_score(self.length_alpha, self.coverage_beta)
             
         # return the top one sentence and scores
-        self.results = sorted(self.results, key = lambda x: -x[1])
+        self.results = sorted(self.results, key = lambda x: - x.normalized_score)
 
         print(self.results[0])
         
         if len(self.results) > 0:
-            best_sentence = self.results[0][0]
-            best_score = self.results[0][1]
+            best_sentence = self.results[0].finished_sentence
+            best_score = self.results[0].normalized_score
         else:
             best_sentence = []
             best_score = 0.0
@@ -123,14 +143,11 @@ class Beam:
         fsa_target_mask = None
         if self.with_fsa:
             fsa_target_mask = self.fsa_target_mask
-
-        
-
             
         if index == 0:
-            return self.model.beam_step(self.sess, self.bucket_id, index = index, sources = self.source_inputs, target_inputs = self.target_inputs, fsa_target_mask = fsa_target_mask)
+            return self.model.beam_step(self.sess, self.bucket_id, index = index, sources = self.source_inputs, target_inputs = self.target_inputs, fsa_target_mask = fsa_target_mask, check_attention = self.check_attention)
         else:
-            return self.model.beam_step(self.sess, self.bucket_id, index = index, target_inputs = self.target_inputs, beam_parent = self.beam_parent, fsa_target_mask = fsa_target_mask)
+            return self.model.beam_step(self.sess, self.bucket_id, index = index, target_inputs = self.target_inputs, beam_parent = self.beam_parent, fsa_target_mask = fsa_target_mask, check_attention = self.check_attention)
 
         
     def get_top_beam_cells(self, index, top_value, top_index, eos_value):
@@ -167,7 +184,7 @@ class Beam:
         return top_beam_cells
 
     
-    def get_top_beam_cells_fsa(self, index, top_value, top_index, eos_value):
+    def get_top_beam_cells_fsa(self, index, top_value, top_index, eos_value, attention_score = None):
         top_beam_cells = []
 
         if index == 0:
@@ -226,7 +243,7 @@ class Beam:
         mylog(s)
     
     
-    def grow_sentence(self, index, top_beam_cells):
+    def grow_sentence(self, index, top_beam_cells, attention_score = None):
         if self.print_beam:
             mylog("--------- Step {} --------".format(index))
         # the variables for next step 
@@ -234,6 +251,8 @@ class Beam:
         beam_parent = []
         scores = []
         sentences = []
+        if self.check_attention:
+            attention_scores = []
 
         if self.with_fsa:
             fsa_states = []
@@ -248,7 +267,19 @@ class Beam:
 
                 finished_sentence = self.sentences[bc.beam_index] + [bc.word_index]
                 finished_score = bc.score
-                self.results.append((finished_sentence, finished_score))
+
+                coverage_score = 0.0
+                if self.check_attention:
+                    coverage_score = self.attention_scores[bc.beam_index] + attention_score[bc.beam_index]
+                    #print(finished_sentence, finished_score)
+                    #print(coverage_score)
+                    coverage_score = np.sum(np.log(np.minimum(coverage_score, 1.0)))
+
+
+                    
+                f = FinishedEntry(finished_sentence, finished_score, coverage_score = coverage_score)
+                    
+                self.results.append(f)
 
                 if self.print_beam:
                     self.print_current_beam(j, bc, finished = True)
@@ -262,6 +293,9 @@ class Beam:
             target_inputs.append(bc.word_index)
             scores.append(bc.score)
             sentences.append(self.sentences[bc.beam_index] + [bc.word_index])
+
+            if self.check_attention:
+                attention_scores.append(self.attention_scores[bc.beam_index] + attention_score[bc.beam_index])
 
             if self.with_fsa:
                 fsa_states.append(bc.fsa_state)
@@ -280,8 +314,9 @@ class Beam:
             sentences.append(sentences[-1])
             if self.with_fsa:
                 fsa_states.append(fsa_states[-1])
+            if self.check_attention:
+                attention_scores.append(self.attention_scores[-1] + attention_score[-1])
 
-        
         # update for next step 
         self.beam_parent = beam_parent
         self.target_inputs = target_inputs
@@ -290,6 +325,8 @@ class Beam:
         if self.with_fsa:
             self.fsa_states = fsa_states
             self.prepare_fsa_target_mask()
+        if self.check_attention:
+            self.attention_scores = attention_scores
 
 
 

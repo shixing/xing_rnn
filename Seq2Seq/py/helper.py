@@ -136,7 +136,7 @@ def declare_flags(distributed = False):
     tf.app.flags.DEFINE_integer("serve_port", 10210, "the port for serving mode")
 
     tf.app.flags.DEFINE_float("length_alpha", 0.0, "the alpha value for the length normalization")
-    tf.app.flags.DEFINE_boolean("coverage_beta", 0.0, "the beta value for the coverage score")
+    tf.app.flags.DEFINE_float("coverage_beta", 0.0, "the beta value for the coverage score")
 
     
     # for FSA
@@ -379,6 +379,9 @@ def parsing_flags(_FLAGS):
     if _FLAGS.mode in ["BEAM_DECODE",'FORCE_DECODE']:
         _FLAGS.forward_only = True
 
+        if _FLAGS.mode == "BEAM_DECODE" and _FLAGS.coverage_beta > 0.0:
+            _FLAGS.check_attention = True
+        
         if _FLAGS.serve:
             log_path = os.path.join(_FLAGS.model_dir,"log.{}.serve.txt".format(_FLAGS.mode))
             
@@ -414,7 +417,7 @@ def parsing_flags(_FLAGS):
         _FLAGS.with_fsa = False
 
     # detect conflict options:
-    assert(_FLAGS.mode == 'FORCE_DECODE' or not _FLAGS.check_attention)
+    #assert(_FLAGS.mode == 'FORCE_DECODE' or not _FLAGS.check_attention)
         
         
     log_flags(_FLAGS)

@@ -535,7 +535,7 @@ class SeqModel(object):
 
     
     def attention_seq2seq(self, encoder_cell, decoder_cell, encoder_inputs, encoder_raws, decoder_inputs, dtype, devices = None):
-
+      
         # a = softmax( a_v * tanh(a_w_source * h_source + a_w_target * h_target + a_b))
         # context = a * h_source
         # h_target_attent = tanh(h_w_context * context + h_w_target * h_target + h_b)
@@ -733,7 +733,7 @@ class SeqModel(object):
             self.beam_with_buckets(self.sources_embed, self.sources, self.inputs_embed, self.beam_buckets, self.encoder_cell, self.decoder_cell, self.dtype, self.devices, self.with_attention)
 
             
-    def beam_step(self, session, bucket_id, index = 0, sources = None, target_inputs = None, beam_parent = None, fsa_target_mask = None):
+    def beam_step(self, session, bucket_id, index = 0, sources = None, target_inputs = None, beam_parent = None, fsa_target_mask = None, check_attention = False):
       
         # just ignore the bucket_id
         def convert2d(data):
@@ -788,12 +788,18 @@ class SeqModel(object):
         output_feed['index'] = self.topk_index
         output_feed['eos_value'] = self.eos_value
         output_feed['ops'] = self.beamStates.decoder2after_ops
+        if check_attention: 
+            output_feed['attention'] = self.attention_score
         if self.with_attention:
             output_feed['hatt_ops'] = self.beamStates.hatt_decoder2after_ops
 
         outputs = session.run(output_feed,input_feed)
-        
-        return [outputs['value']], [outputs['index']], [outputs['eos_value']] # add the out list just to be compatible with the old run. 
+
+        if check_attention:
+            return [outputs['value']], [outputs['index']], [outputs['eos_value']], outputs['attention'] # add the out list just to be compatible with the old run.
+        else:
+            return [outputs['value']], [outputs['index']], [outputs['eos_value']] # add the out list just to be compatible with the old run.
+      
 
 
     def get_batch_test(self, data_set, bucket_id, start_id = None):
@@ -909,7 +915,7 @@ class SeqModel(object):
             self.beamStates.set_encoder_raws_matrix_ops(encoder_raws)
 
             self.attention.set_encoder_top_states(self.beamStates.get_top_states_4(), self.beamStates.get_top_states_transform_4(), self.beamStates.get_encoder_raws_matrix())
-            attention_cell = AttentionCellWrapper(decoder_cell, self.attention)
+            attention_cell = AttentionCellWrapper(decoder_cell, self.attention, check_attention = self.check_attention)
             attention_device_cell = DeviceCellWrapper(attention_cell,devices[-2])
 
             with tf.variable_scope("decoder"):
@@ -918,6 +924,10 @@ class SeqModel(object):
 
                 decoder_outputs, decoder_state = tf.nn.dynamic_rnn(attention_device_cell, decoder_inputs, initial_state = state, swap_memory = self.swap_memory)
 
+                if self.check_attention:
+                    self.attention_score = decoder_outputs[1]
+                    decoder_outputs = decoder_outputs[0]
+                
                 lstm_state = decoder_state[0]
                 hatt = decoder_state[1]
                 
