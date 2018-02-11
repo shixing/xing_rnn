@@ -86,7 +86,8 @@ class SeqModel(object):
                  num_sentences_per_batch_in_mrt = 1,
                  mrt_alpha = 0.005,
                  normalize_ht_radius = 0.0,
-                 layer_normalization = False
+                 layer_normalization = False,
+                 rare_weight = False
                  ):
         """Create the model.
         """
@@ -127,6 +128,8 @@ class SeqModel(object):
         self.mrt_alpha = mrt_alpha
         self.normalize_ht_radius = normalize_ht_radius
         self.layer_normalization = layer_normalization
+        self.rare_weight = rare_weight
+
         
         self.global_batch_size = batch_size
         if not standalone:
@@ -175,11 +178,12 @@ class SeqModel(object):
             
             
         def lstm_cell(device,input_keep_prob = 1.0, output_keep_prob = 1.0, state_keep_prob=1.0, variational_recurrent=False, input_size = None, seed = None):
-            if self.layer_normalization:
+            if not self.layer_normalization:
                 cell = tf.contrib.rnn.LSTMCell(size, state_is_tuple=True)
             else:
                 cell = tf.contrib.rnn.LayerNormBasicLSTMCell(size)
-            cell = tf.contrib.rnn.DropoutWrapper(cell,input_keep_prob = input_keep_prob, output_keep_prob = output_keep_prob, state_keep_prob = state_keep_prob, variational_recurrent=variational_dropout, dtype=self.dtype, input_size = input_size, seed = seed)
+
+            cell = tf.contrib.rnn.DropoutWrapper(cell,input_keep_prob = input_keep_prob, output_keep_prob = output_keep_prob, state_keep_prob = state_keep_prob, variational_recurrent=False, dtype=self.dtype, input_size = input_size, seed = None)
             cell = DeviceCellWrapper(cell, device)
             return cell
           
@@ -222,6 +226,8 @@ class SeqModel(object):
 
             self.targets = tf.placeholder(tf.int32, shape=[self.batch_size, None ], name = "target")
             self.target_weights = tf.placeholder(dtype, shape = [self.batch_size, None ], name="target_weight")
+            if self.rare_weight:
+              self.rare_weights = tf.placeholder(dtype, shape = [self.batch_size, None ], name="rare_weight")
 
         # Attention
         if self.with_attention:
@@ -250,7 +256,7 @@ class SeqModel(object):
 
         if not beam_search:
             # Model with buckets
-            self.model_with_buckets(self.sources_embed, self.sources, self.inputs_embed, self.targets, self.target_weights, self.buckets, self.encoder_cell, self.decoder_cell, dtype, self.softmax_loss_function, devices = devices, attention = with_attention)
+            self.model_with_buckets(self.sources_embed, self.sources, self.inputs_embed, self.targets, self.target_weights, self.buckets, self.encoder_cell, self.decoder_cell, dtype, self.softmax_loss_function, devices = devices, attention = with_attention, rare_weights = self.rare_weights if self.rare_weight else None)
 
             # for minimum risk training, draw the sample decoder
             if self.mrt:
@@ -314,7 +320,7 @@ class SeqModel(object):
 
     
     def step(self,session, sources, inputs, targets, target_weights, 
-             bucket_id, forward_only = False, dump_lstm = False, check_attention = False):
+             bucket_id, forward_only = False, dump_lstm = False, check_attention = False, rare_weights = None):
 
         # no matter which bucket_id, we will always use bucket[0]
       
@@ -326,28 +332,35 @@ class SeqModel(object):
         input_feed[self.inputs.name] = inputs
         input_feed[self.targets.name] = targets
         input_feed[self.target_weights.name] = target_weights
-
+        if self.rare_weight:
+            input_feed[self.rare_weights.name] = rare_weights
+        
         # output_feed
+        output_feed = {}
         if forward_only:
-            output_feed = [self.losses]
+            output_feed['losses']=self.losses
+            if self.rare_weight:
+                output_feed['losses'] = self.normal_losses
+                output_feed['rare_losses'] = self.losses
             addition = {}
-            output_feed.append(addition)
+            output_feed['addition'] = addition
             if dump_lstm:
                 addition['dump_lstm'] = self.states_to_dump
             if check_attention:
                 # MARK
                 addition['check_attention'] = self.attention_score
         else:
-            output_feed = [self.losses]
-            output_feed += [self.updates, self.gradient_norms]
+            output_feed['losses']=self.losses
+            if self.rare_weight:
+                output_feed['losses'] = self.normal_losses
+                output_feed['rare_losses'] = self.losses
+            output_feed['updates'] = self.updates
+            output_feed['gradient_norms'] = self.gradient_norms
 
         outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
 
-        if forward_only:
-            return outputs
-        else:
-            return outputs[0], outputs[2] # only return losses
-
+        return outputs
+        
     def get_batch(self, data_set, bucket_id, start_id = None):
         
         # input target sequence has EOS, but no GO or PAD
@@ -471,7 +484,7 @@ class SeqModel(object):
     
     def model_with_buckets(self, sources, sources_raw, inputs, targets, weights,
                            buckets, encoder_cell, decoder_cell, dtype, softmax_loss_function,
-                           per_example_loss=False, name=None, devices = None, attention = False):
+                           per_example_loss=False, name=None, devices = None, attention = False, rare_weights = None):
                                                                               
         seq2seq_f = None
 
@@ -504,6 +517,11 @@ class SeqModel(object):
                 crossent = softmax_loss_function(logits, targets)
                 cost = math_ops.reduce_sum(crossent * weights)
                 cost = cost / math_ops.cast(self.global_batch_size, cost.dtype)
+                if self.rare_weight:
+                    rare_weights = tf.reshape(rare_weights, [-1])
+                    rare_cost = math_ops.reduce_sum(crossent * rare_weights)
+                    rare_cost = rare_cost / math_ops.cast(self.global_batch_size, cost.dtype)
+
                 if self.mrt:
                     crossent_batch_length = tf.reshape(crossent * weights, [self.batch_size,-1])
                     # alpha_log_p = a * log(p(sentence)): shape:[batch_size]
@@ -517,7 +535,11 @@ class SeqModel(object):
                     self.mrt_loss = mrt_loss
 
         self.logits = logits
-        self.losses  = cost
+        if self.rare_weight:
+            self.losses = rare_cost
+            self.normal_losses = cost
+        else:
+            self.losses = cost
         self.hts = _hts
 
         
@@ -532,6 +554,7 @@ class SeqModel(object):
                 encoder_outputs, encoder_state  = tf.nn.dynamic_rnn(encoder_cell,encoder_inputs,initial_state = init_state, swap_memory = self.swap_memory)
 
             with tf.variable_scope("decoder"):
+
                 decoder_outputs, decoder_state = tf.nn.dynamic_rnn(decoder_cell,decoder_inputs, initial_state = encoder_state, swap_memory = self.swap_memory)
 
         return decoder_outputs, decoder_state

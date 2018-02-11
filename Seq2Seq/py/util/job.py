@@ -229,7 +229,38 @@ __cmd__
                 return "r{}".format(val), "", "--normalize_ht_radius {}".format(val)
             else:
                 return "","",""
-        
+
+        def layer_normalization(val):
+            if val:
+                return "LN", "", "--layer_normalization True"
+            else:
+                return "","",""
+
+        def length_alpha(val):
+            if val > 0:
+                return "", "la{}".format(val), "--length_alpha {}".format(val)
+            else:
+                return "","",""
+
+        def coverage_beta(val):
+            if val > 0:
+                return "", "cb{}".format(val), "--coverage_beta {}".format(val)
+            else:
+                return "","",""
+
+        def rare_weight_alpha(val):
+            if val > 0.0:
+                return "RW{}".format(val),"","--rare_weight True --rare_weight_alpha {}".format(val)
+            else:
+                return "","",""
+            
+        def replica(val):
+            if val != None:
+                return "_r{}_".format(val), "",""
+            else:
+                return "","",""
+            
+            
         self.keys= ["name",
                     "batch_size",
                     "size",
@@ -265,7 +296,12 @@ __cmd__
                     "minimum_risk_training",
                     "num_sentences_per_batch_in_mrt",
                     "mrt_alpha",
-                    "normalize_ht_radius"
+                    "normalize_ht_radius",
+                    "layer_normalization",
+                    "length_alpha",
+                    "coverage_beta",
+                    "rare_weight_alpha",
+                    "replica"
         ]
         
         self.funcs = {"name":name,
@@ -303,7 +339,13 @@ __cmd__
                       "minimum_risk_training":minimum_risk_training,
                       "num_sentences_per_batch_in_mrt":num_sentences_per_batch_in_mrt,
                       "mrt_alpha":mrt_alpha,
-                      "normalize_ht_radius":normalize_ht_radius
+                      "normalize_ht_radius":normalize_ht_radius,
+                      "layer_normalization":layer_normalization,
+                      "length_alpha":length_alpha,
+                      "coverage_beta":coverage_beta,
+                      "rare_weight_alpha": rare_weight_alpha,
+                      "replica":replica
+
         }
 
         self.train_template = {"name":"enfr10k",
@@ -335,7 +377,10 @@ __cmd__
                                "minimum_risk_training":False,
                                "num_sentences_per_batch_in_mrt":1,
                                "mrt_alpha":0.005,
-                               "normalize_ht_radius":0.0
+                               "normalize_ht_radius":0.0,
+                               "layer_normalization":False,
+                               "rare_weight_alpha":0.0,
+                               "replica":None
                          }
 
         self.train_template_dist = {"name":"enfr10k",
@@ -363,7 +408,11 @@ __cmd__
                                     "checkpoint_frequency":2,
                                     "checkpoint_steps":0,
                                     "tie_input_output_embedding":False,
-                                    "variational_dropout":False
+                                    "variational_dropout":False,
+                                    "layer_normalization":False,
+                                    "rare_weight_alpha":0.0,
+                                    "replica":None
+
         }
 
         self.decode_template = {"name":"enfr10k",
@@ -385,7 +434,11 @@ __cmd__
                                 "max_ratio": 1.5,
                                 "fsa_path": "",
                                 "individual_fsa": False,
-                                "tie_input_output_embedding":False
+                                "tie_input_output_embedding":False,
+                                "length_alpha":0.0,
+                                "coverage_beta":0.0
+
+
         }
 
         

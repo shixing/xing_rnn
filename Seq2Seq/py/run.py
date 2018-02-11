@@ -93,8 +93,9 @@ def create_model(session, _FLAGS, run_options=None, run_metadata=None):
                          mrt = _FLAGS.minimum_risk_training,
                          num_sentences_per_batch_in_mrt = _FLAGS.num_sentences_per_batch_in_mrt,
                          mrt_alpha = _FLAGS.mrt_alpha,
-                         normalize_ht_radius = FLAGS.normalize_ht_radius,
-                         layer_normalization = FLAGS.layer_normalization
+                         normalize_ht_radius = _FLAGS.normalize_ht_radius,
+                         layer_normalization = _FLAGS.layer_normalization,
+                         rare_weight = _FLAGS.rare_weight
                          )
 
     ckpt = tf.train.get_checkpoint_state(_FLAGS.saved_model_dir)
@@ -142,6 +143,12 @@ def train():
     )
 
 
+    # target_vocab_weights
+    target_vocab_weights = None
+    if FLAGS.rare_weight:
+        data_utils.output_weight(to_train, FLAGS.vocab_weights_to)
+        target_vocab_weights = data_utils.load_vocab_weights(FLAGS.vocab_weights_to)
+    
     train_data_bucket = read_data(from_train,to_train,_buckets)
     dev_data_bucket = read_data(from_dev,to_dev,_buckets)
     _,_,real_vocab_size_from,real_vocab_size_to = data_utils.get_vocab_info(FLAGS.data_cache_dir)
@@ -237,11 +244,12 @@ def train():
             ite = dite.next_sequence()
         
         # statistics during training
-        step_time, loss = 0.0, 0.0
+        step_time, loss, rare_loss = 0.0, 0.0, 0.0
         get_batch_time = 0.0
         current_step = 0
         previous_losses = []
         low_ppx = float("inf")
+        low_ppx_rare = float("inf")
         low_ppx_step = 0
         steps_per_report = 30
         n_targets_report = 0
@@ -249,6 +257,7 @@ def train():
         report_time = 0
         n_valid_sents = 0
         n_valid_words = 0
+        n_valid_words_rare = 0
         patience = FLAGS.patience
         
         mylog_section("TRAIN")
@@ -262,10 +271,21 @@ def train():
             # data and train
             source_inputs, target_inputs, target_outputs, target_weights, bucket_id = ite.next()
 
+            target_weights_rare = None
+            if FLAGS.rare_weight:
+                target_weights_rare = data_utils.check_rare_weights(target_outputs, target_vocab_weights, FLAGS.rare_weight_alpha)
+            
             get_batch_time += (time.time() - start_time) / steps_per_checkpoint
             
-            L, norm = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id)            
-                
+            outputs = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id, rare_weights = target_weights_rare)
+
+            L, norm = outputs['losses'], outputs['gradient_norms']
+            if FLAGS.rare_weight:
+                rare_L = outputs['rare_losses']
+                rare_loss += rare_L
+                n_valid_words_rare += np.sum(target_weights_rare)
+
+            
             #print(L, norm)
             
             # loss and time
@@ -309,14 +329,23 @@ def train():
                 loss = loss / n_valid_words
                 train_ppx = math.exp(float(loss)) if loss < 300 else float("inf")
                 learning_rate = model.learning_rate.eval()
+                # rare loss
+                
+                if FLAGS.rare_weight:
+                    rare_loss = rare_loss * FLAGS.batch_size # because our loss is divided by batch_size in seqModel.py
+                    rare_loss = rare_loss / n_valid_words_rare
+                    train_ppx_rare = math.exp(float(rare_loss)) if loss < 300 else float("inf")
+
                 
                                 
                 # dev_ppx
-                dev_loss, dev_ppx = evaluate(sess, model, dev_data_bucket)
+                dev_loss, dev_ppx, dev_ppx_rare = evaluate(sess, model, dev_data_bucket, target_vocab_weights = target_vocab_weights)
 
                 # report
                 sect_name = "CHECKPOINT {} STEP {}".format(i_checkpoint, current_step)
                 msg = "Learning_rate: {:.4f} Dev_ppx: {:.4f} Train_ppx: {:.4f} Norm: {:.4f}".format(learning_rate, dev_ppx, train_ppx, norm)
+                if FLAGS.rare_weight:
+                    msg = "Learning_rate: {:.4f} Dev_ppx: {:.4f} Train_ppx: {:.4f} Dev_ppx_rare: {:.4f} Train_ppx_rare: {:.4f} Norm: {:.4f}".format(learning_rate, dev_ppx, train_ppx, dev_ppx_rare, train_ppx_rare, norm) 
                 mylog_line(sect_name, msg)
 
                 if FLAGS.with_summary:
@@ -334,6 +363,9 @@ def train():
                     mylog_line(sect_name, msg)
                     
                 # save best model
+                if FLAGS.rare_weight:
+                    dev_ppx = dev_ppx_rare
+                    
                 if dev_ppx < low_ppx:
                     patience = FLAGS.patience
                     low_ppx = dev_ppx
@@ -359,38 +391,55 @@ def train():
                     break
 
                 # Save checkpoint and zero timer and loss.
-                step_time, loss, n_valid_sents, n_valid_words = 0.0, 0.0, 0, 0
+                step_time, loss, n_valid_sents, n_valid_words, rare_loss, n_valid_words_rare = 0.0, 0.0, 0, 0, 0.0, 0
                 get_batch_time = 0
 
 
 
-def evaluate(sess, model, data_set):
+def evaluate(sess, model, data_set, target_vocab_weights = None):
     # Run evals on development set and print their perplexity/loss.
     dropoutRateRaw = FLAGS.keep_prob
     sess.run(model.dropout10_op)
 
     start_id = 0
     loss = 0.0
+    loss_rare = 0.0
     n_steps = 0
     n_valids = 0
+    n_valids_rare = 0
     batch_size = FLAGS.batch_size
     
     dite = DataIterator(model, data_set, len(FLAGS._buckets), batch_size, None)
     ite = dite.next_sequence(stop = True)
 
     for sources, inputs, outputs, weights, bucket_id in ite:
-        L, _ = model.step(sess, sources, inputs, outputs, weights, bucket_id, forward_only = True)
+        target_weights_rare = None
+        if FLAGS.rare_weight:
+            target_weights_rare = data_utils.check_rare_weights(outputs, target_vocab_weights, FLAGS.rare_weight_alpha)
+
+        outputs = model.step(sess, sources, inputs, outputs, weights, bucket_id, forward_only = True, rare_weights = target_weights_rare)
+
+        L = outputs['losses']
 
         loss += L
         n_steps += 1
         n_valids += np.sum(weights)
 
+        if FLAGS.rare_weight:
+            loss_rare += outputs['rare_losses']
+            n_valids_rare += np.sum(target_weights_rare)
+        
     loss = loss/(n_valids) * FLAGS.batch_size
     ppx = math.exp(loss) if loss < 300 else float("inf")
 
+    ppx_rare = None
+    if FLAGS.rare_weight:
+        loss_rare = loss_rare/(n_valids_rare) * FLAGS.batch_size
+        ppx_rare = math.exp(loss_rare) if loss_rare < 300 else float("inf")
+    
     sess.run(model.dropoutAssign_op)
 
-    return loss, ppx
+    return loss, ppx, ppx_rare
 
 
 ### MRT Training ###
@@ -813,7 +862,9 @@ def force_decode():
         records = []
         for source_inputs, target_inputs, target_outputs, target_weights, bucket_id, line_id in ite:
             mylog("--- force decoding {}/{} {}/{} sent ---".format(i_sent, test_total_size,line_id,n_test_original))
-            L, addition = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id, forward_only = True, check_attention = FLAGS.check_attention)
+            outputs = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id, forward_only = True, check_attention = FLAGS.check_attention)
+            L = outputs['losses']
+            addition = outputs['addition']
             record = {}
             record['loss'] = L
             if FLAGS.check_attention:

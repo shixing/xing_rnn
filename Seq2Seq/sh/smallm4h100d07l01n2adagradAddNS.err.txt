@@ -1,2 +1,20 @@
 Couldn't import dot_parser, loading of dot files will not be possible.
-2018-01-31 15:26:22.838794: I tensorflow/core/platform/cpu_feature_guard.cc:137] Your CPU supports instructions that this TensorFlow binary was not compiled to use: SSE4.1 SSE4.2 AVX AVX2 FMA
+2018-02-09 22:46:42.651718: I tensorflow/core/platform/cpu_feature_guard.cc:137] Your CPU supports instructions that this TensorFlow binary was not compiled to use: SSE4.1 SSE4.2 AVX AVX2 FMA
+Traceback (most recent call last):
+  File "..//py/run.py", line 1227, in <module>
+    tf.app.run()
+  File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/platform/app.py", line 48, in run
+    _sys.exit(main(_sys.argv[:1] + flags_passthrough))
+  File "..//py/run.py", line 1194, in main
+    train()
+  File "..//py/run.py", line 214, in train
+    model = create_model(sess, FLAGS, run_options, run_metadata)
+  File "..//py/run.py", line 99, in create_model
+    rare_weight_alpha = _FLAGS.rare_weight_alpha
+  File "/Users/xingshi/Workspace/misc/lstm/tensorflow/xing_rnn/Seq2Seq/py/seqModel_dynamic.py", line 260, in __init__
+    self.model_with_buckets(self.sources_embed, self.sources, self.inputs_embed, self.targets, self.target_weights, self.buckets, self.encoder_cell, self.decoder_cell, dtype, self.softmax_loss_function, devices = devices, attention = with_attention, rare_weights = self.rare_weights if self.rare_weight else None)
+  File "/Users/xingshi/Workspace/misc/lstm/tensorflow/xing_rnn/Seq2Seq/py/seqModel_dynamic.py", line 521, in model_with_buckets
+    if rare_weights:
+  File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/framework/ops.py", line 542, in __nonzero__
+    raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
+TypeError: Using a `tf.Tensor` as a Python `bool` is not allowed. Use `if t is not None:` instead of `if t:` to test if a tensor is defined, and use TensorFlow ops such as tf.cond to execute subgraphs conditioned on the value of a tensor.

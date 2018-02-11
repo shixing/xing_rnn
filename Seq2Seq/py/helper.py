@@ -105,6 +105,11 @@ def declare_flags(distributed = False):
     tf.app.flags.DEFINE_integer("n_bucket", 5,
                                 "num of buckets to run. More buckets will increase the speed without occupy more memory. However, the model will take much longer time to initialize.")
 
+    # rare word weights
+    tf.app.flags.DEFINE_boolean("rare_weight", False, "Wherther to provide use rare weights")
+    tf.app.flags.DEFINE_float("rare_weight_alpha", 0.0, "the alpha value of rare weights")
+
+    
     # With Attention
     tf.app.flags.DEFINE_boolean("attention", False, "with_attention")
     tf.app.flags.DEFINE_string("attention_style", "multiply", "multiply, additive")
@@ -377,6 +382,9 @@ def parsing_flags(_FLAGS):
     mkdir(_FLAGS.decode_output_dir)
 
     _FLAGS.forward_only = False
+
+    if _FLAGS.rare_weight:
+        _FLAGS.vocab_weights_to = os.path.join(_FLAGS.data_cache_dir,'vocab.to.weights')
     
     if _FLAGS.mode in ["BEAM_DECODE",'FORCE_DECODE']:
         _FLAGS.forward_only = True

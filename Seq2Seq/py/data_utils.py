@@ -27,6 +27,7 @@ from six.moves import urllib
 
 from tensorflow.python.platform import gfile
 import tensorflow as tf
+import numpy as np
 
 # Special vocabulary symbols - we always put them at the start.
 _PAD = b"_PAD"
@@ -385,4 +386,65 @@ def ids_to_tokens(lines, to_vocab_path, dest_path):
         f.write(sent+"\n")
     f.close()
     
-    
+# rare weights
+
+def frequency(train_file):
+    d = {}
+    d[2] = 0 # for EOS
+    f = open(train_file)
+    for line in f:
+        words = [int(x) for x in line.strip().split()]
+        d[2] += 1
+        for word in words:
+            if word not in d:
+                d[word] = 0
+            d[word] += 1
+    f.close()
+    return d
+
+def output_weight(train_file, weight_file):
+
+    freq = frequency(train_file)
+  
+    f = open(weight_file,'w')
+
+    s = sum(freq.values())
+    indexs = sorted(freq)
+    for i in indexs:
+        weight = s*1.0 / freq[i] 
+        f.write("{} {}\n".format(i,weight))
+
+    f.close()
+
+
+def check_rare_weights(target_outputs, vocab_weights, alpha):
+    new_weights = np.zeros_like(target_outputs, dtype = np.float32)
+    #print(target_outputs)
+    m,n = new_weights.shape
+    for i in xrange(m):
+        s = 0.0
+        ns = 0
+        for j in xrange(n):
+            w = target_outputs[i][j]
+            if w in vocab_weights:
+                s+= np.power(vocab_weights[w],alpha)
+                ns += 1
+        for j in xrange(n):
+            w = target_outputs[i][j]
+            if w in vocab_weights:
+                new_weights[i,j] = np.power(vocab_weights[w],alpha) / s * ns
+                
+    new_weights = new_weights.tolist()
+    #print(new_weights)
+    return new_weights
+                
+def load_vocab_weights(weight_file):
+    f = open(weight_file)
+    d = {}
+    for line in f:
+        ll = line.split()
+        index = int(ll[0])
+        weight = float(ll[1])
+        d[index] = weight
+    f.close()
+    return d
