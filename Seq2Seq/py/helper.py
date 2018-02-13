@@ -187,6 +187,9 @@ def declare_flags(distributed = False):
 
     # normalize the final ht
     tf.app.flags.DEFINE_float("normalize_ht_radius", 0.0, "radius of normalize_ht_radius")
+
+    # dtype
+    tf.app.flags.DEFINE_string("dtype", 'float32', "float32 or float16")
     
 
 
@@ -368,6 +371,14 @@ def log_flags(_FLAGS):
 
 
 def parsing_flags(_FLAGS):
+    # dtype
+    if _FLAGS.dtype == "float32":
+        _FLAGS.tf_dtype = tf.float32
+        _FLAGS.np_dtype = np.float32
+    elif _FLAGS.dtype == "float16":
+        _FLAGS.tf_dtype = tf.float16
+        _FLAGS.np_dtype = np.float16
+    
     # saved_model
 
     _FLAGS.data_cache_dir = os.path.join(_FLAGS.model_dir, "data_cache")
@@ -375,6 +386,8 @@ def parsing_flags(_FLAGS):
     _FLAGS.decode_output_dir = os.path.join(_FLAGS.model_dir, "decode_output")
     _FLAGS.summary_dir = _FLAGS.saved_model_dir
 
+
+    
     mkdir(_FLAGS.model_dir)
     mkdir(_FLAGS.data_cache_dir)
     mkdir(_FLAGS.saved_model_dir)

@@ -3,11 +3,12 @@ import tensorflow as tf
 
 
 class ModelSummary:
-    def __init__(self):
+    def __init__(self, dtype = tf.float32):
+        self.dtype = dtype
         with tf.name_scope("ModelSummary"):
             with tf.device("/cpu:0"):
-                self.train_ppx = tf.placeholder(tf.float32, shape = (), name = "train_ppx")
-                self.dev_ppx = tf.placeholder(tf.float32, shape = (), name = "dev_ppx")
+                self.train_ppx = tf.placeholder(self.dtype, shape = (), name = "train_ppx")
+                self.dev_ppx = tf.placeholder(self.dtype, shape = (), name = "dev_ppx")
                 self.summary_train_ppx = tf.summary.scalar("train_ppx", self.train_ppx)
                 self.summary_dev_ppx = tf.summary.scalar("dev_ppx", self.dev_ppx)
             

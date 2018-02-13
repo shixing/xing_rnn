@@ -51,7 +51,7 @@ _beam_buckets = [x[0] for x in _buckets]
 
 def create_model(session, _FLAGS, run_options=None, run_metadata=None):
     devices = get_device_address(_FLAGS.N)
-    dtype = tf.float32
+    dtype = _FLAGS.tf_dtype
     initializer = None
     if _FLAGS.p != 0.0:
         initializer = tf.random_uniform_initializer(-_FLAGS.p,_FLAGS.p)
@@ -273,7 +273,7 @@ def train():
 
             target_weights_rare = None
             if FLAGS.rare_weight:
-                target_weights_rare = data_utils.check_rare_weights(target_outputs, target_vocab_weights, FLAGS.rare_weight_alpha)
+                target_weights_rare = data_utils.check_rare_weights(target_outputs, target_vocab_weights, FLAGS.rare_weight_alpha, np_dtype = FLAGS.np_dtype)
             
             get_batch_time += (time.time() - start_time) / steps_per_checkpoint
             
@@ -415,11 +415,12 @@ def evaluate(sess, model, data_set, target_vocab_weights = None):
     for sources, inputs, outputs, weights, bucket_id in ite:
         target_weights_rare = None
         if FLAGS.rare_weight:
-            target_weights_rare = data_utils.check_rare_weights(outputs, target_vocab_weights, FLAGS.rare_weight_alpha)
+            target_weights_rare = data_utils.check_rare_weights(outputs, target_vocab_weights, FLAGS.rare_weight_alpha, np_dtype = FLAGS.np_dtype)
 
         outputs = model.step(sess, sources, inputs, outputs, weights, bucket_id, forward_only = True, rare_weights = target_weights_rare)
 
         L = outputs['losses']
+        print("L=",L)
 
         loss += L
         n_steps += 1

@@ -139,10 +139,12 @@ class SeqModel(object):
         
         # some parameters
         with tf.device(devices[0]):
-            self.dropoutRate = tf.get_variable('dropoutRate',initializer = float(dropoutRate), trainable=False, dtype=dtype)        
+            self.dropoutRate = tf.get_variable('dropoutRate',shape = (), initializer = tf.constant_initializer(float(dropoutRate),dtype = dtype), trainable=False, dtype=dtype)
+
+
             self.dropoutAssign_op = self.dropoutRate.assign(dropoutRate)
             self.dropout10_op = self.dropoutRate.assign(1.0)
-            self.learning_rate = tf.get_variable("learning_rate", initializer = float(learning_rate), trainable=False, dtype=dtype)
+            self.learning_rate = tf.get_variable("learning_rate", shape = (), initializer = tf.constant_initializer(float(learning_rate), dtype = dtype), trainable=False, dtype=dtype)
             self.learning_rate_decay_op = self.learning_rate.assign(
                 self.learning_rate * learning_rate_decay_factor)
             self.global_step = tf.get_variable("global_step", initializer = 0, trainable=False, dtype = tf.int32)
@@ -172,9 +174,9 @@ class SeqModel(object):
 
             if self.mrt:
                 # only for sampling
-                self.dummy_inputs = tf.cast(tf.reshape(input_plhd, [self.batch_size,-1,1]),tf.float32)
+                self.dummy_inputs = tf.cast(tf.reshape(input_plhd, [self.batch_size,-1,1]),self.dtype)
                 # for mrt training
-                self.bleu_scores = tf.placeholder(tf.float32, shape = [self.batch_size], name = "bleu_scores")
+                self.bleu_scores = tf.placeholder(self.dtype, shape = [self.batch_size], name = "bleu_scores")
             
             
         def lstm_cell(device,input_keep_prob = 1.0, output_keep_prob = 1.0, state_keep_prob=1.0, variational_recurrent=False, input_size = None, seed = None):
@@ -620,7 +622,7 @@ class SeqModel(object):
             with tf.variable_scope("encoder"):
                 encoder_outputs, encoder_state = tf.nn.dynamic_rnn(encoder_cell,encoder_inputs,initial_state = init_state, swap_memory = self.swap_memory)
                 
-            sample_decoder_cell = SampleCellWrapper(decoder_cell, self.input_embedding, self.output_embedding, self.output_bias) 
+            sample_decoder_cell = SampleCellWrapper(decoder_cell, self.input_embedding, self.output_embedding, self.output_bias, tf_dtype = self.dtype) 
             device_sample_decoder_cell = DeviceCellWrapper(sample_decoder_cell,devices[-1])
             
             with tf.variable_scope("decoder"):
@@ -647,7 +649,7 @@ class SeqModel(object):
 
             attention_cell = AttentionCellWrapper(decoder_cell, self.attention, check_attention = self.check_attention)
             attention_device_cell = DeviceCellWrapper(attention_cell,devices[-2])
-            sample_decoder_cell = SampleCellWrapper(attention_device_cell, self.input_embedding, self.output_embedding, self.output_bias) 
+            sample_decoder_cell = SampleCellWrapper(attention_device_cell, self.input_embedding, self.output_embedding, self.output_bias, tf_dtype = self.dtype) 
             device_sample_decoder_cell = DeviceCellWrapper(sample_decoder_cell,devices[-1])
             
             with tf.variable_scope("decoder"):

@@ -417,8 +417,8 @@ def output_weight(train_file, weight_file):
     f.close()
 
 
-def check_rare_weights(target_outputs, vocab_weights, alpha):
-    new_weights = np.zeros_like(target_outputs, dtype = np.float32)
+def check_rare_weights(target_outputs, vocab_weights, alpha, np_dtype = np.float32):
+    new_weights = np.zeros_like(target_outputs, dtype = np_dtype)
     #print(target_outputs)
     m,n = new_weights.shape
     for i in xrange(m):

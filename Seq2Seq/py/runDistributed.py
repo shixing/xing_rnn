@@ -43,7 +43,7 @@ def create_model(session, run_options, run_metadata):
     device_strs = FLAGS.NN.split(",")
     devices_per_model = [get_device_address(x) for x in device_strs]
     num_models = FLAGS.num_models
-    dtype = tf.float32
+    dtype = FLAGS.tf_dtype
 
     initializer = None
     if FLAGS.p != 0.0:
