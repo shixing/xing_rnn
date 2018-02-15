@@ -107,8 +107,10 @@ def declare_flags(distributed = False):
 
     # rare word weights
     tf.app.flags.DEFINE_boolean("rare_weight", False, "Wherther to provide use rare weights")
+    tf.app.flags.DEFINE_boolean("rare_weight_log", False, "Wherther to provide use rare weights")
     tf.app.flags.DEFINE_float("rare_weight_alpha", 0.0, "the alpha value of rare weights")
-
+    tf.app.flags.DEFINE_float("rare_weight_alpha_decay", 1.0, "the alpha value of rare weights")
+    
     
     # With Attention
     tf.app.flags.DEFINE_boolean("attention", False, "with_attention")

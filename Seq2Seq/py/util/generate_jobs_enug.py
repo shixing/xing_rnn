@@ -88,11 +88,11 @@ def distributed3():
 def distributed4():
     
     j = Jobs("enugbpe20k",hpc_hours = 100, hpc_machine_type = "gpu2", per_gpu = True, num_gpus_per_task = 1, num_gpus_per_machine = 6, root_dir = "/home/specifio/xingshi/Seq2Seq")
-    grids = {"name":["enugbpe20k_v6_"],
+    grids = {"name":["enugbpe20k_v12_"],
              "batch_size":[128],
              "size": [300],
              "dropout":[0.8],
-             "learning_rate":[0.5],
+             "learning_rate":[0.0005],
              "n_epoch":[80],
              "num_layers":[2],
              "attention":[True],
@@ -103,7 +103,7 @@ def distributed4():
              "min_target_length":[0],
              "max_target_length":[120],
              "n_bucket":[10],
-             "optimizer":["adagrad"],
+             "optimizer":["adam"],
              "learning_rate_decay_factor":[1.0],
              "N":["00000"],
              "attention_style":["additive"],
@@ -115,7 +115,8 @@ def distributed4():
              "fromScratch":[True],
              "layer_normalization":[True],
              "normalize_ht_radius":[3.5],
-             "replica":[1,2,3,4,5,6]
+             "replica":[1,2,3],
+             "rare_weight_alpha":[0.05]
     }
 
     decode_grids = {

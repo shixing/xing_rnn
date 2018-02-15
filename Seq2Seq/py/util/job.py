@@ -219,10 +219,16 @@ __cmd__
                 return "","",""
 
         def num_sentences_per_batch_in_mrt(val):
-            return "s{}".format(val),"","--num_sentences_per_batch_in_mrt {}".format(val)
+            if val != 0:
+                return "s{}".format(val),"","--num_sentences_per_batch_in_mrt {}".format(val)
+            else:
+                return "","",""
 
         def mrt_alpha(val):
-            return "alpha{}".format(val), "", "--mrt_alpha {}".format(val)
+            if val != 0.0:
+                return "alpha{}".format(val), "", "--mrt_alpha {}".format(val)
+            else:
+                return "","",""
 
         def normalize_ht_radius(val):
             if val != 0.0:
@@ -251,6 +257,18 @@ __cmd__
         def rare_weight_alpha(val):
             if val > 0.0:
                 return "RW{}".format(val),"","--rare_weight True --rare_weight_alpha {}".format(val)
+            else:
+                return "","",""
+
+        def rare_weight_log(val):
+            if val == True:
+                return "RWlog", "", "--rare_weight_log True"
+            else:
+                return "", "", ""
+
+        def rare_weight_alpha_decay(val):
+            if val != 1.0:
+                return "RWdecay{}".format(val),"","--rare_weight_alpha_decay {}".format(val)
             else:
                 return "","",""
             
@@ -301,7 +319,9 @@ __cmd__
                     "length_alpha",
                     "coverage_beta",
                     "rare_weight_alpha",
-                    "replica"
+                    "replica",
+                    "rare_weight_log",
+                    "rare_weight_alpha_decay"
         ]
         
         self.funcs = {"name":name,
@@ -344,7 +364,10 @@ __cmd__
                       "length_alpha":length_alpha,
                       "coverage_beta":coverage_beta,
                       "rare_weight_alpha": rare_weight_alpha,
-                      "replica":replica
+                      "replica":replica,
+                      "rare_weight_log":rare_weight_log,
+                      "rare_weight_alpha_decay":rare_weight_alpha_decay
+        
 
         }
 
@@ -375,12 +398,14 @@ __cmd__
                                "tie_input_output_embedding":False,
                                "variational_dropout":False,
                                "minimum_risk_training":False,
-                               "num_sentences_per_batch_in_mrt":1,
-                               "mrt_alpha":0.005,
+                               "num_sentences_per_batch_in_mrt":0,
+                               "mrt_alpha":0.0,
                                "normalize_ht_radius":0.0,
                                "layer_normalization":False,
                                "rare_weight_alpha":0.0,
-                               "replica":None
+                               "replica":None,
+                               "rare_weight_log":False,
+                               "rare_weight_alpha_decay":1.0
                          }
 
         self.train_template_dist = {"name":"enfr10k",
@@ -436,9 +461,9 @@ __cmd__
                                 "individual_fsa": False,
                                 "tie_input_output_embedding":False,
                                 "length_alpha":0.0,
-                                "coverage_beta":0.0
-
-
+                                "coverage_beta":0.0,
+                                "layer_normalization":False,
+                                "normalize_ht_radius":0.0
         }
 
         

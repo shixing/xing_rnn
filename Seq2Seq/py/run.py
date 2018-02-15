@@ -273,7 +273,7 @@ def train():
 
             target_weights_rare = None
             if FLAGS.rare_weight:
-                target_weights_rare = data_utils.check_rare_weights(target_outputs, target_vocab_weights, FLAGS.rare_weight_alpha, np_dtype = FLAGS.np_dtype)
+                target_weights_rare = data_utils.check_rare_weights(target_outputs, target_vocab_weights, FLAGS.rare_weight_alpha, np_dtype = FLAGS.np_dtype, log_weight = FLAGS.rare_weight_log, alpha_decay = FLAGS.rare_weight_alpha_decay, n_decay = int(current_step / steps_per_checkpoint) )
             
             get_batch_time += (time.time() - start_time) / steps_per_checkpoint
             
@@ -339,7 +339,7 @@ def train():
                 
                                 
                 # dev_ppx
-                dev_loss, dev_ppx, dev_ppx_rare = evaluate(sess, model, dev_data_bucket, target_vocab_weights = target_vocab_weights)
+                dev_loss, dev_ppx, dev_ppx_rare = evaluate(sess, model, dev_data_bucket, target_vocab_weights = target_vocab_weights, n_check_point = i_checkpoint)
 
                 # report
                 sect_name = "CHECKPOINT {} STEP {}".format(i_checkpoint, current_step)
@@ -396,7 +396,7 @@ def train():
 
 
 
-def evaluate(sess, model, data_set, target_vocab_weights = None):
+def evaluate(sess, model, data_set, target_vocab_weights = None, n_check_point = 0):
     # Run evals on development set and print their perplexity/loss.
     dropoutRateRaw = FLAGS.keep_prob
     sess.run(model.dropout10_op)
@@ -415,7 +415,7 @@ def evaluate(sess, model, data_set, target_vocab_weights = None):
     for sources, inputs, outputs, weights, bucket_id in ite:
         target_weights_rare = None
         if FLAGS.rare_weight:
-            target_weights_rare = data_utils.check_rare_weights(outputs, target_vocab_weights, FLAGS.rare_weight_alpha, np_dtype = FLAGS.np_dtype)
+            target_weights_rare = data_utils.check_rare_weights(outputs, target_vocab_weights, FLAGS.rare_weight_alpha, np_dtype = FLAGS.np_dtype, log_weight = FLAGS.rare_weight_log, alpha_decay = FLAGS.rare_weight_alpha_decay, n_decay = n_check_point)
 
         outputs = model.step(sess, sources, inputs, outputs, weights, bucket_id, forward_only = True, rare_weights = target_weights_rare)
 

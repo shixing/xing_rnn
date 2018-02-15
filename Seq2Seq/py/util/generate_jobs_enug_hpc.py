@@ -5,11 +5,11 @@ from job import Jobs
 def distributed4():
     
     j = Jobs("enugbpe20k",hpc_hours = 100, hpc_machine_type = "gpu4", per_gpu = True, num_gpus_per_task = 1, num_gpus_per_machine = 4, root_dir = "/home/nlg-05/xingshi/Seq2Seq")
-    grids = {"name":["enugbpe20k_v10_"],
+    grids = {"name":["enugbpe20k_v14_"],
              "batch_size":[128],
              "size": [300],
              "dropout":[0.8],
-             "learning_rate":[0.0005,0.0001,0.001,0.005],
+             "learning_rate":[0.0005],
              "n_epoch":[80],
              "num_layers":[2],
              "attention":[True],
@@ -31,9 +31,11 @@ def distributed4():
              "variational_dropout":[True],
              "fromScratch":[True],
              "layer_normalization":[True],
-             "normalize_ht_radius":[3.5]
+             "normalize_ht_radius":[3.5],
              #"replica":[1,2,3,4]
-             #"rare_weight_alpha":[0.025,0.05,0.075,0.1]
+             "rare_weight_alpha":[0.05],
+             "rare_weight_alpha_decay":[0.99,0.95,0.9,0.85]
+             #"rare_weight_log":[True]
     }
 
     decode_grids = {

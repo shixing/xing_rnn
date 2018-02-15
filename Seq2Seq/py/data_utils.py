@@ -417,7 +417,8 @@ def output_weight(train_file, weight_file):
     f.close()
 
 
-def check_rare_weights(target_outputs, vocab_weights, alpha, np_dtype = np.float32):
+def check_rare_weights(target_outputs, vocab_weights, alpha, np_dtype = np.float32, log_weight = False, alpha_decay = 1.0, n_decay = 0):
+    alpha = np.power(alpha_decay,n_decay) * alpha
     new_weights = np.zeros_like(target_outputs, dtype = np_dtype)
     #print(target_outputs)
     m,n = new_weights.shape
@@ -427,12 +428,18 @@ def check_rare_weights(target_outputs, vocab_weights, alpha, np_dtype = np.float
         for j in xrange(n):
             w = target_outputs[i][j]
             if w in vocab_weights:
-                s+= np.power(vocab_weights[w],alpha)
+                if log_weight: 
+                    s+= np.power(np.log(vocab_weights[w]),alpha)
+                else:
+                    s+= np.power(vocab_weights[w],alpha)
                 ns += 1
         for j in xrange(n):
             w = target_outputs[i][j]
             if w in vocab_weights:
-                new_weights[i,j] = np.power(vocab_weights[w],alpha) / s * ns
+                if log_weight:
+                    new_weights[i,j] = np.power(np.log(vocab_weights[w]),alpha) / s * ns
+                else:
+                    new_weights[i,j] = np.power(vocab_weights[w],alpha) / s * ns
                 
     new_weights = new_weights.tolist()
     #print(new_weights)
