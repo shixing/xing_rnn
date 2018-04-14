@@ -1,15 +1,15 @@
 Couldn't import dot_parser, loading of dot files will not be possible.
-2018-01-30 23:21:50.711605: I tensorflow/core/platform/cpu_feature_guard.cc:137] Your CPU supports instructions that this TensorFlow binary was not compiled to use: SSE4.1 SSE4.2 AVX AVX2 FMA
+2018-04-13 16:46:29.343102: I tensorflow/core/platform/cpu_feature_guard.cc:137] Your CPU supports instructions that this TensorFlow binary was not compiled to use: SSE4.1 SSE4.2 AVX AVX2 FMA
 Traceback (most recent call last):
-  File "..//py/run.py", line 1175, in <module>
+  File "..//py/run.py", line 1578, in <module>
     tf.app.run()
   File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/platform/app.py", line 48, in run
     _sys.exit(main(_sys.argv[:1] + flags_passthrough))
-  File "..//py/run.py", line 1142, in main
+  File "..//py/run.py", line 1541, in main
     train()
-  File "..//py/run.py", line 266, in train
-    L, norm = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id)            
-  File "/Users/xingshi/Workspace/misc/lstm/tensorflow/xing_rnn/Seq2Seq/py/seqModel_dynamic.py", line 339, in step
+  File "..//py/run.py", line 281, in train
+    outputs = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id, rare_weights = target_weights_rare)
+  File "/Users/xingshi/Workspace/misc/lstm/tensorflow/xing_rnn/Seq2Seq/py/seqModel_dynamic.py", line 366, in step
     outputs = session.run(output_feed, input_feed, options = self.run_options, run_metadata = self.run_metadata)
   File "/Users/xingshi/anaconda/lib/python2.7/site-packages/tensorflow/python/client/session.py", line 889, in run
     run_metadata_ptr)

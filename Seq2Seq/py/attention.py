@@ -104,8 +104,13 @@ class Attention:
                 self.fi_w_att = tf.get_variable("fi_w_att",[self.model.size, self.model.size], dtype = self.model.dtype)
                 self.fi_b =  tf.get_variable('fi_b',[self.model.size], dtype = self.model.dtype)
 
+                # attention scale
                 if self.model.attention_scale:
                     self.attention_g = tf.get_variable('attention_g', dtype=self.model.dtype, initializer=math.sqrt(1. / self.model.size))
+
+                # null attention
+                if self.model.null_attention:
+                    self.null_attention_vector = tf.get_variable('null_attention_vector', shape = (1, self.model.size), dtype = self.model.dtype)
 
     def mask_score(self,scores, encoder_inputs, mask_value = float('-inf')):
         '''
@@ -129,7 +134,10 @@ class Attention:
         if self.model.attention_style == "multiply":
             return self.get_context_multiply(query, self.top_states_4, self.top_states_transform_4, self.encoder_raws_matrix)
         elif self.model.attention_style == "additive":
-            return self.get_context_additive(query, self.top_states_4, self.top_states_transform_4, self.encoder_raws_matrix)
+            if self.model.null_attention:
+                return self.get_context_additive_null(query, self.top_states_4, self.top_states_transform_4, self.encoder_raws_matrix)
+            else:
+                return self.get_context_additive(query, self.top_states_4, self.top_states_transform_4, self.encoder_raws_matrix)
 
         
     def get_context_multiply(self, query, top_states_4, top_states_transform_4, encoder_raws_matrix):
@@ -175,6 +183,37 @@ class Attention:
         
         return context, a
 
+    
+    def get_context_additive_null(self, query, top_states_4,  top_states_transform_4, encoder_raws_matrix):
+        query_transform_2 = tf.add(tf.matmul(query, self.a_w_target), self.a_b) #[batch_size, hidden_size]
+        query_transform_4 = tf.reshape(query_transform_2, [-1,1,1,self.model.size]) #[batch_size,1,1,hidden_size]
+
+        if self.model.attention_scale:
+            # normed_v = g * v / |v|
+            normed_v = self.attention_g * self.a_v * math_ops.rsqrt(
+                math_ops.reduce_sum(math_ops.square(self.a_v)))
+        else:
+            normed_v = self.a_v
+
+        attention_null_vector_transform = tf.matmul(self.null_attention_vector, self.a_w_source)
+        attention_null_score = tf.reduce_sum(normed_v * tf.tanh(attention_null_vector_transform + query_transform_2),[1]) #[batch_size]
+        attention_null_score = tf.reshape(attention_null_score, [-1,1])
+        #a = softmax( a_v * tanh(...))
+        s = tf.reduce_sum(normed_v * tf.tanh(top_states_transform_4 + query_transform_4),[2,3]) #[batch_size, source_length]
+        s = self.mask_score(s,encoder_raws_matrix)
+        s_with_null = tf.concat([attention_null_score, s],1)
+        a_with_null = tf.nn.softmax(s_with_null) # [batch_size, 1 + source_length]
+        a = tf.slice(a_with_null,[0,1],[-1,-1]) #[batch_size, source_length]
+        
+        # context = a * h_source
+        context = tf.reduce_sum(tf.reshape(a, [self.model.batch_size, -1,1,1]) * top_states_4, [1,2])
+        
+        return context, a
+
+
+
+
+    
     def feed_input(self, inputs, pre_h_att):
         return tf.add(tf.add(tf.matmul(inputs, self.fi_w_x), tf.matmul(pre_h_att, self.fi_w_att)), self.fi_b)
 

@@ -192,7 +192,10 @@ def declare_flags(distributed = False):
 
     # dtype
     tf.app.flags.DEFINE_string("dtype", 'float32', "float32 or float16")
-    
+
+    # null_attention
+    tf.app.flags.DEFINE_boolean("null_attention", False, "has null attention")
+
 
 
 

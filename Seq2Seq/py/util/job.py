@@ -277,7 +277,12 @@ __cmd__
                 return "_r{}_".format(val), "",""
             else:
                 return "","",""
-            
+
+        def null_attention(val):
+            if val:
+                return "NULL", "", "--null_attention True"
+            else:
+                return "", "", ""
             
         self.keys= ["name",
                     "batch_size",
@@ -321,7 +326,8 @@ __cmd__
                     "rare_weight_alpha",
                     "replica",
                     "rare_weight_log",
-                    "rare_weight_alpha_decay"
+                    "rare_weight_alpha_decay",
+                    "null_attention"
         ]
         
         self.funcs = {"name":name,
@@ -366,7 +372,8 @@ __cmd__
                       "rare_weight_alpha": rare_weight_alpha,
                       "replica":replica,
                       "rare_weight_log":rare_weight_log,
-                      "rare_weight_alpha_decay":rare_weight_alpha_decay
+                      "rare_weight_alpha_decay":rare_weight_alpha_decay,
+                      "null_attention":null_attention
         
 
         }
@@ -405,7 +412,8 @@ __cmd__
                                "rare_weight_alpha":0.0,
                                "replica":None,
                                "rare_weight_log":False,
-                               "rare_weight_alpha_decay":1.0
+                               "rare_weight_alpha_decay":1.0,
+                               "null_attention": False
                          }
 
         self.train_template_dist = {"name":"enfr10k",
@@ -463,11 +471,11 @@ __cmd__
                                 "length_alpha":0.0,
                                 "coverage_beta":0.0,
                                 "layer_normalization":False,
-                                "normalize_ht_radius":0.0
+                                "normalize_ht_radius":0.0,
+                                "null_attention": False
         }
 
-        
-        
+
         self.train_cmd ="python $PY --mode TRAIN --model_dir $MODEL_DIR --train_path_from $TRAIN_PATH_FROM --dev_path_from $DEV_PATH_FROM --train_path_to $TRAIN_PATH_TO --dev_path_to $DEV_PATH_TO --saveCheckpoint True --allow_growth True "
 
         self.train_cmd_dist ="python $PYDIST --mode TRAIN --model_dir $MODEL_DIR --train_path_from $TRAIN_PATH_FROM --dev_path_from $DEV_PATH_FROM --train_path_to $TRAIN_PATH_TO --dev_path_to $DEV_PATH_TO --saveCheckpoint True --allow_growth True "

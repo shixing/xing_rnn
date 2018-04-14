@@ -87,7 +87,8 @@ class SeqModel(object):
                  mrt_alpha = 0.005,
                  normalize_ht_radius = 0.0,
                  layer_normalization = False,
-                 rare_weight = False
+                 rare_weight = False,
+                 null_attention = False
                  ):
         """Create the model.
         """
@@ -129,6 +130,8 @@ class SeqModel(object):
         self.normalize_ht_radius = normalize_ht_radius
         self.layer_normalization = layer_normalization
         self.rare_weight = rare_weight
+        self.null_attention = null_attention
+
 
         
         self.global_batch_size = batch_size
@@ -341,6 +344,7 @@ class SeqModel(object):
         output_feed = {}
         if forward_only:
             output_feed['losses']=self.losses
+            output_feed['losses_by_words'] = self.losses_by_words
             if self.rare_weight:
                 output_feed['losses'] = self.normal_losses
                 output_feed['rare_losses'] = self.losses
@@ -537,6 +541,7 @@ class SeqModel(object):
                     self.mrt_loss = mrt_loss
 
         self.logits = logits
+        self.losses_by_words = crossent # 1 dimension: [#batch_size * #words]
         if self.rare_weight:
             self.losses = rare_cost
             self.normal_losses = cost
@@ -590,6 +595,7 @@ class SeqModel(object):
                 state = attention_cell.zero_attention_state(self.batch_size, encoder_state,self.dtype)
 
                 decoder_outputs, decoder_state = tf.nn.dynamic_rnn(attention_device_cell, decoder_inputs, initial_state = state, swap_memory = self.swap_memory)
+
                 if self.check_attention:
                     self.attention_score = decoder_outputs[1]
                     decoder_outputs = decoder_outputs[0]
