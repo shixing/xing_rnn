@@ -26,6 +26,7 @@ from attention import Attention, AttentionCellWrapper
 from beam_states import BeamStates
 from sampler import SampleCellWrapper
 from logging_helper import mylog, mylog_section, mylog_subsection, mylog_line
+from dump import StateCellWrapper
 
 import random
 
@@ -131,8 +132,6 @@ class SeqModel(object):
         self.layer_normalization = layer_normalization
         self.rare_weight = rare_weight
         self.null_attention = null_attention
-
-
         
         self.global_batch_size = batch_size
         if not standalone:
@@ -214,7 +213,6 @@ class SeqModel(object):
             
         self.encoder_cell = tf.contrib.rnn.MultiRNNCell(encoder_cells, state_is_tuple=True)
         self.decoder_cell = tf.contrib.rnn.MultiRNNCell(decoder_cells, state_is_tuple=True)
-
         
         # Output Layer
         with tf.device(devices[-1]):
@@ -351,7 +349,7 @@ class SeqModel(object):
             addition = {}
             output_feed['addition'] = addition
             if dump_lstm:
-                addition['dump_lstm'] = self.states_to_dump
+                addition['decoder_cthts'] = self.decoder_cthts
             if check_attention:
                 # MARK
                 addition['check_attention'] = self.attention_score
@@ -502,7 +500,7 @@ class SeqModel(object):
         with variable_scope.variable_scope(variable_scope.get_variable_scope()):
 
             _hts, decoder_state = seq2seq_f(encoder_cell, decoder_cell, sources, sources_raw, inputs, dtype, devices)
-
+            
             # flat _hts targets weights
             _hts = tf.reshape(_hts, [-1, self.size]) #[batch_size * time_steps , size]
             # normalize the ht;
@@ -560,9 +558,19 @@ class SeqModel(object):
             with tf.variable_scope("encoder"):
                 encoder_outputs, encoder_state  = tf.nn.dynamic_rnn(encoder_cell,encoder_inputs,initial_state = init_state, swap_memory = self.swap_memory)
 
+            if self.dump_lstm:
+                decoder_cell = StateCellWrapper(decoder_cell)
+                
             with tf.variable_scope("decoder"):
 
                 decoder_outputs, decoder_state = tf.nn.dynamic_rnn(decoder_cell,decoder_inputs, initial_state = encoder_state, swap_memory = self.swap_memory)
+                if self.dump_lstm:
+                    self.decoder_cthts = decoder_outputs[1]
+                    print('Shape of decoder_cthts:')
+                    print(self.decoder_cthts)
+                    decoder_outputs = decoder_outputs[0]
+
+                
 
         return decoder_outputs, decoder_state
 
@@ -590,11 +598,21 @@ class SeqModel(object):
             attention_cell = AttentionCellWrapper(decoder_cell, self.attention, check_attention = self.check_attention)
             attention_device_cell = DeviceCellWrapper(attention_cell,devices[-2])
 
+            if self.dump_lstm:
+                attention_device_cell = StateCellWrapper(attention_device_cell)
+
+
             with tf.variable_scope("decoder"):
 
                 state = attention_cell.zero_attention_state(self.batch_size, encoder_state,self.dtype)
 
                 decoder_outputs, decoder_state = tf.nn.dynamic_rnn(attention_device_cell, decoder_inputs, initial_state = state, swap_memory = self.swap_memory)
+                
+                if self.dump_lstm:
+                    self.decoder_cthts = decoder_outputs[1][0]
+                    print('Shape of decoder_cthts:')
+                    print(self.decoder_cthts)
+                    decoder_outputs = decoder_outputs[0]
 
                 if self.check_attention:
                     self.attention_score = decoder_outputs[1]

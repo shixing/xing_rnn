@@ -63,6 +63,7 @@ def declare_flags(distributed = False):
     tf.app.flags.DEFINE_string("decode_output", "./model/small/decode_output/b10.output", "beam search decode output file.")
 
     tf.app.flags.DEFINE_string("force_decode_output", "./model/small/decode_output/b10.force_decode", "beam search decode output file.")
+    tf.app.flags.DEFINE_string("dump_lstm_output", "./model/small/decode_output/b10.dump_lstm", "beam search decode output file.")
     
     # training hypers
     tf.app.flags.DEFINE_string("optimizer", "adam",
@@ -362,6 +363,11 @@ def show_all_variables():
     for var in all_vars:
         mylog(var.name+" @ "+var.device)
 
+def show_all_tensors():
+    all_tensors = [tensor for tensor in tf.get_default_graph().as_graph_def().node]
+    for tensor in all_tensors:
+        mylog(tensor.name)
+    
 
 def mkdir(path):
     if not os.path.exists(path):
@@ -400,16 +406,21 @@ def parsing_flags(_FLAGS):
     mkdir(_FLAGS.decode_output_dir)
 
     _FLAGS.forward_only = False
+    _FLAGS.dump_lstm = False
+
 
     if _FLAGS.rare_weight:
         _FLAGS.vocab_weights_to = os.path.join(_FLAGS.data_cache_dir,'vocab.to.weights')
     
-    if _FLAGS.mode in ["BEAM_DECODE",'FORCE_DECODE']:
+    if _FLAGS.mode in ["BEAM_DECODE",'FORCE_DECODE','DUMP_LSTM']:
         _FLAGS.forward_only = True
 
         if _FLAGS.mode == "BEAM_DECODE" and _FLAGS.coverage_beta > 0.0:
             _FLAGS.check_attention = True
-        
+
+        if _FLAGS.mode == 'DUMP_LSTM':
+            _FLAGS.dump_lstm = True
+            
         if _FLAGS.serve:
             log_path = os.path.join(_FLAGS.model_dir,"log.{}.serve.txt".format(_FLAGS.mode))
             
@@ -424,6 +435,7 @@ def parsing_flags(_FLAGS):
                 _FLAGS.fsa_path = os.path.join(_FLAGS.decode_output_test_id_dir, _FLAGS.decode_output_id+".fsa")
 
             log_path = os.path.join(_FLAGS.model_dir,"log.{}.{}.txt".format(_FLAGS.mode, _FLAGS.decode_output_id))
+            
         
     else:
         log_path = os.path.join(_FLAGS.model_dir,"log.{}.txt".format(_FLAGS.mode))

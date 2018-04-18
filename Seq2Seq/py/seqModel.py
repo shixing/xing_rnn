@@ -26,6 +26,7 @@ import data_iterator
 from logging_helper import mylog, mylog_section, mylog_subsection, mylog_line
 
 
+
 class DeviceCellWrapper(tf.nn.rnn_cell.RNNCell):
   def __init__(self, cell, device):
     self._cell = cell
@@ -167,6 +168,7 @@ class SeqModel(object):
         self.encoder_cell = tf.contrib.rnn.MultiRNNCell(encoder_cells, state_is_tuple=True)
         self.decoder_cell = tf.contrib.rnn.MultiRNNCell(decoder_cells, state_is_tuple=True)
 
+        
         
         # Output Layer
         with tf.device(devices[-1]):

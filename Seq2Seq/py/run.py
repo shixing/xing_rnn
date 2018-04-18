@@ -33,11 +33,13 @@ from customize_debug import has_nan
 
 from fsa import FSA, State
 
-from helper import get_buckets, log_flags, get_device_address, dump_graph, show_all_variables, get_buckets, read_data, read_reference, read_data_test, mkdir, parsing_flags, declare_flags, read_data_test_parallel, dump_records
+from helper import get_buckets, log_flags, get_device_address, dump_graph, show_all_variables, show_all_tensors, get_buckets, read_data, read_reference, read_data_test, mkdir, parsing_flags, declare_flags, read_data_test_parallel, dump_records
 
 from beam_states import Beam
 
 from bleu import sentence_level_bleu, corpus_level_bleu
+
+import cPickle
 
 declare_flags()
 FLAGS = tf.app.flags.FLAGS
@@ -87,6 +89,7 @@ def create_model(session, _FLAGS, run_options=None, run_metadata=None):
                          attention_style = _FLAGS.attention_style,
                          attention_scale = _FLAGS.attention_scale,
                          with_fsa = _FLAGS.with_fsa,
+                         dump_lstm = _FLAGS.dump_lstm,
                          check_attention = _FLAGS.check_attention,
                          tie_input_output_embedding = _FLAGS.tie_input_output_embedding,
                          variational_dropout = _FLAGS.variational_dropout,
@@ -848,6 +851,8 @@ def force_decode():
         model = create_model(sess, FLAGS, run_options, run_metadata)
         show_all_variables()
 
+        show_all_tensors()
+        
         sess.run(model.dropoutRate.assign(1.0))
 
         start_id = 0
@@ -1439,28 +1444,50 @@ def beam_decode_serve():
 def dump_lstm():
     # Not tested yet
     # dump the hidden states to some where
-    mylog_section("READ DATA")
-    test_data_bucket, _buckets, test_data_order = read_test(FLAGS.data_cache_dir, FLAGS.test_path, get_vocab_path(FLAGS.data_cache_dir), FLAGS.L, FLAGS.n_bucket)
-    vocab_path = get_vocab_path(FLAGS.data_cache_dir)
-    real_vocab_size = get_real_vocab_size(vocab_path)
 
+    mylog("Reading Data...")
+
+    from_test = None
+
+    from_vocab_path, to_vocab_path, real_vocab_size_from, real_vocab_size_to = data_utils.get_vocab_info(FLAGS.data_cache_dir)
+
+    from_vocab = data_utils.load_index2word(from_vocab_path)
+    to_vocab = data_utils.load_index2word(to_vocab_path)
+
+    
     FLAGS._buckets = _buckets
-    FLAGS.real_vocab_size = real_vocab_size
+    FLAGS._beam_buckets = _beam_buckets
+    FLAGS.real_vocab_size_from = real_vocab_size_from
+    FLAGS.real_vocab_size_to = real_vocab_size_to
+
+    # make dir to store test.src.id
+    from_test = data_utils.prepare_test_data(
+        FLAGS.decode_output_test_id_dir,
+        FLAGS.test_path_from,
+        from_vocab_path)
+
+    to_test = data_utils.prepare_test_target_data(
+        FLAGS.decode_output_test_id_dir,
+        FLAGS.test_path_to,
+        to_vocab_path)
+
+    test_data_bucket, test_data_order, n_test_original = read_data_test_parallel(from_test,to_test,_buckets)
 
     test_bucket_sizes = [len(test_data_bucket[b]) for b in xrange(len(_buckets))]
     test_total_size = int(sum(test_bucket_sizes))
 
     # reports
-    mylog_section("REPORT")
-
-    mylog("real_vocab_size: {}".format(FLAGS.real_vocab_size))
-    mylog("_buckets:{}".format(FLAGS._buckets))
+    mylog("from_vocab_size: {}".format(FLAGS.from_vocab_size))
+    mylog("to_vocab_size: {}".format(FLAGS.to_vocab_size))
+    mylog("_buckets: {}".format(FLAGS._buckets))
     mylog("DUMP_LSTM:")
     mylog("total: {}".format(test_total_size))
     mylog("buckets: {}".format(test_bucket_sizes))
+
     
     config = tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)
     config.gpu_options.allow_growth = FLAGS.allow_growth
+
     with tf.Session(config=config) as sess:
 
         # runtime profile
@@ -1475,10 +1502,8 @@ def dump_lstm():
 
         mylog("Creating Model")
         model = create_model(sess, FLAGS, run_options, run_metadata)
-        
-        mylog("Init tensors to dump")
-        model.init_dump_states()
 
+        
         #dump_graph('graph.txt')
         mylog_section("All Variables")
         show_all_variables()
@@ -1492,36 +1517,26 @@ def dump_lstm():
         mylog_section("Data Iterators")
 
         dite = DataIterator(model, test_data_bucket, len(_buckets), batch_size, None, data_order = test_data_order)
-        ite = dite.next_original()
+        ite = dite.next_original_parallel()
             
-        fdump = open(FLAGS.dump_file,'wb')
 
         mylog_section("DUMP_LSTM")
 
         i_sent = 0
-        for inputs, outputs, weights, bucket_id, line_id in ite:
-            # inputs: [[_GO],[1],[2],[3],[_EOS],[pad_id],[pad_id]]
-            # positions: [4]
 
-            mylog("--- decoding {}/{} {}/{} sent ---".format(i_sent, test_total_size, line_id, n_test_original))
-            i_sent += 1
-            #print(inputs)
-            #print(outputs)
-            #print(weights)
-            #print(bucket_id)
+        states = []
+        
+        for source_inputs, target_inputs, target_outputs, target_weights, bucket_id, line_id in ite:
+            mylog("--- dump lstm {}/{} {}/{} sent ---".format(i_sent, test_total_size,line_id,n_test_original))
+            outputs = model.step(sess, source_inputs, target_inputs, target_outputs, target_weights, bucket_id, dump_lstm = True, forward_only = True)
+            L = outputs['losses']
+            addition = outputs['addition']
+            decoder_cthts = addition['decoder_cthts']
+            states.append(decoder_cthts)
 
-            L, states = model.step(sess, inputs, outputs, weights, bucket_id, forward_only = True, dump_lstm = True)
-            
-            mylog("LOSS: {}".format(L))
-            
-            sw = StateWrapper()
-            sw.create(inputs,outputs,weights,states)
-            sw.save_to_stream(fdump)
-            
-            # do the following convert:
-            # inputs: [[pad_id],[1],[2],[pad_id],[pad_id],[pad_id]]
-            # positions:[2]
 
+        fdump = open(FLAGS.dump_file,'wb')
+        cPickle.dump(states,fdump)
         fdump.close()
         
 
@@ -1558,7 +1573,7 @@ def main(_):
         mylog("\nWARNING: The output file and original file may not align one to one, because we remove the lines whose lenght exceeds the maximum length set by -L \n")
             
         FLAGS.batch_size = 1
-        FLAGS.dump_file = os.path.join(FLAGS.model_dir,FLAGS.dump_lstm_output)
+        FLAGS.dump_file = FLAGS.dump_lstm_output
         #FLAGS.n_bucket = 1
         dump_lstm()
 

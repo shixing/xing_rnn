@@ -17,11 +17,11 @@ DEV_PATH_TO=$DATA_DIR/valid.tgt
 TEST_PATH_FROM=$DATA_DIR/test.src
 TEST_PATH_TO=$DATA_DIR/test.tgt
 DECODE_OUTPUT=$MODEL_DIR/decode_output/b10.output
-FORCE_DECODE_OUTPUT=$MODEL_DIR/decode_output/b10.force_decode
+DUMP_LSTM_OUTPUT=$MODEL_DIR/decode_output/b10.dump_lstm.pickle
 
 BLEU_OUTPUT=$MODEL_DIR/decode_output/b10.bleu
 
 source /home/nlg-05/xingshi/sh/init_tensorflow.sh
 
 #python -m ipdb
-python $PY --mode FORCE_DECODE --model_dir $MODEL_DIR        --test_path_from $TEST_PATH_FROM --test_path_to $DECODE_OUTPUT --force_decode_output $FORCE_DECODE_OUTPUT  --size 100 --num_layers 2 --attention True --from_vocab_size 100 --to_vocab_size 100 --min_source_length 0 --max_source_length 22 --min_target_length 0 --max_target_length 22 --n_bucket 2 --N 00000 --attention_style additive --attention_scale False --check_attention False --layer_normalization True
+python $PY --mode DUMP_LSTM --model_dir $MODEL_DIR        --test_path_from $TEST_PATH_FROM --test_path_to $DECODE_OUTPUT --dump_lstm_output $DUMP_LSTM_OUTPUT  --size 100 --num_layers 2 --attention True --from_vocab_size 100 --to_vocab_size 100 --min_source_length 0 --max_source_length 22 --min_target_length 0 --max_target_length 22 --n_bucket 2 --N 00000 --attention_style additive --attention_scale False --check_attention False --layer_normalization True
