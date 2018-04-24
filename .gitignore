@@ -13,3 +13,5 @@ Seq2Seq/data/*
 Seq2Thinker2Seq/data/
 
 jobs/
+
+DependencyLength/

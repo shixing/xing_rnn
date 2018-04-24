@@ -111,13 +111,13 @@ def distributed4():
              "preprocess_data":[True],
              "checkpoint_steps":[0],
              "tie_input_output_embedding":[True],
-             "variational_dropout":[False],
+             "variational_dropout":[True],
              "fromScratch":[True],
              "layer_normalization":[True],
              "normalize_ht_radius":[3.5],
-             "replica":[1,2,3]
+             "replica":[1,2,3,4,5,6]
              #"null_attention":[True]
-             #"rare_weight_alpha":[0.05],
+             "rare_weight_alpha":[0.05],
     }
 
     decode_grids = {
@@ -178,7 +178,7 @@ def distributed_mrt():
     
 if __name__ == "__main__":
 
-    #distributed2()
+    distributed2()
     #distributed3()
-    distributed4()
+    #distributed4()
 
