@@ -4,6 +4,8 @@ from __future__ import print_function
 
 import cPickle
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import os
 import sys
@@ -71,12 +73,30 @@ def transform_fft(m):
     freq = np.fft.rfftfreq(m.shape[1])
     return f,freq
 
-# visualize it; 
+# visualize it;
+def visulize_by_pickle(fig_name, pickle_name):
+    f = open(pickle_name)
+    average_fs, av = cPickle.load(f)
+    
+    
+    f.close()
+
+    x = range(len(av))
+    y = av
+
+    plt.bar(x,y,0.001)
+    plt.axhline(average_fs)
+    #plt.show()
+    plt.savefig(fig_name)
+    plt.gcf().clear()
+
+    
+
 def visulize(f,freq, d, s, fig_name):
     #print(f[-5,:])
     #print_dim(s,'ht',0,294)
-
-    sp = f 
+    
+    sp = f ** 2
     fs = np.zeros(sp.shape)
     for i in xrange(fs.shape[0]):
         fs[i] = freq
@@ -90,6 +110,8 @@ def visulize(f,freq, d, s, fig_name):
     
     
     sorted_av = sorted(av)
+    print("av/sorted_av:", av.shape, len(sorted_av))
+    print(sorted_av)
     x = range(sp.shape[0])
     y = sorted_av
 
@@ -99,9 +121,14 @@ def visulize(f,freq, d, s, fig_name):
     plt.savefig(fig_name)
     plt.gcf().clear()
 
+    pickle_name = fig_name + ".pickle"
+    ff = open(pickle_name,'wb')
+    cPickle.dump((average_fs, sorted_av), ff)
+    ff.close()
 
 
-if __name__ == "__main__":
+
+if __name__ == "__main__1":
     folder = sys.argv[1]
     fn = os.path.join(folder, "b12.dump_lstm.pickle")
     s = load_pickle(fn)
@@ -109,11 +136,25 @@ if __name__ == "__main__":
 
     for t in ["ct","ht"]:
         for l in xrange(2):
-            fig_name = "{}_{}.pdf".format(t,l)
+            fig_name = "{}_{}.png".format(t,l)
             print(fig_name)
             fig_path = os.path.join(folder,fig_name)
+            
             data = c[l]
             if t == 'ht':
                 data = h[l]
+            print('calculate fft')
             f,freq = transform_fft(data)
+            print("f.shape:", f.shape)
             visulize(f,freq,data,s,fig_path)    
+
+if __name__ == "__main__":
+    folder = sys.argv[1]
+
+    for t in ["ct","ht"]:
+        for l in xrange(2):
+            fig_name = "{}_{}.png".format(t,l)
+            print(fig_name)
+            fig_path = os.path.join(folder,fig_name)
+            
+            visulize_by_pickle(fig_path, fig_path+'.pickle')

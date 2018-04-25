@@ -5,12 +5,12 @@ from job import Jobs
 def distributed2():
     
     j = Jobs("enugbpe20k",hpc_hours = 100, hpc_machine_type = "gpu2", per_gpu = True, num_gpus_per_task = 1, num_gpus_per_machine = 6, root_dir = "/home/specifio/xingshi/Seq2Seq")
-    grids = {"name":["enugbpe20k_v3_"],
+    grids = {"name":["enugbpe20k_v18_"],
              "batch_size":[128],
              "size": [300],
              "dropout":[0.8],
              "learning_rate":[0.5],
-             "n_epoch":[40],
+             "n_epoch":[80],
              "num_layers":[2],
              "attention":[True],
              "from_vocab_size":[40000],
@@ -30,7 +30,10 @@ def distributed2():
              "tie_input_output_embedding":[True],
              "variational_dropout":[True],
              "fromScratch":[True],
-             "normalize_ht_radius":[0.0]
+             "normalize_ht_radius":[3.5],
+             "layer_normalization":[True],
+             
+
     }
 
     decode_grids = {
@@ -115,7 +118,7 @@ def distributed4():
              "fromScratch":[True],
              "layer_normalization":[True],
              "normalize_ht_radius":[3.5],
-             "replica":[1,2,3,4,5,6]
+             "replica":[1,2,3,4,5],
              #"null_attention":[True]
              "rare_weight_alpha":[0.05],
     }
@@ -178,7 +181,7 @@ def distributed_mrt():
     
 if __name__ == "__main__":
 
-    distributed2()
+    #distributed2()
     #distributed3()
-    #distributed4()
+    distributed4()
 
