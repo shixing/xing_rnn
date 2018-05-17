@@ -35,11 +35,12 @@ class BeamCell:
         self.fsa_state = fsa_state
 
 class FinishedEntry:
-    def __init__(self, finished_sentence, log_probability, coverage_score = 0.0):
+    def __init__(self, finished_sentence, log_probability, coverage_score = 0.0, attention_history = None):
         self.finished_sentence = finished_sentence
         self.log_probability = log_probability
         self.coverage_score = coverage_score
         self.normalized_score = self.log_probability
+        self.attention_history = attention_history
         
     def get_normalized_score(self, length_alpha = 0.0, coverage_beta = 0.0):
         self.normalized_score = self.log_probability / np.power((5 + len(self.finished_sentence)) / 6 , length_alpha) + coverage_beta * self.coverage_score
@@ -50,17 +51,17 @@ class FinishedEntry:
 class Beam:
     # to decode one sentence
     
-    def __init__(self,  sess, model, source_inputs, length,  bucket_id, beam_size, min_ratio, max_ratio, print_beam, length_alpha = 0.0, coverage_beta = 0.0):
+    def __init__(self,  sess, model, source_inputs, length,  bucket_id, beam_size, min_ratio, max_ratio, print_beam, length_alpha = 0.0, coverage_beta = 0.0, record_attention_history = False):
         self.beam_size = beam_size
         self.min_target_length = int(length * min_ratio) + 1
         self.max_target_length = int(length * max_ratio) + 1 # include EOS
         self.print_beam = print_beam
         self.length_alpha = length_alpha
         self.coverage_beta = coverage_beta
-        if self.coverage_beta > 0.0:
+        
+        self.check_attention = False
+        if self.coverage_beta > 0.0 or record_attention_history:
             self.check_attention = True
-        else:
-            self.check_attention = False
 
         # variable
         self.bucket_id = bucket_id
@@ -69,13 +70,15 @@ class Beam:
         self.sess = sess
         
         # final results
-        self.results = [] # (sentence, score)
+        self.results = [] # [FinishedEntry]
 
         # for generation sentences
         self.scores = [0.0] * self.beam_size
         self.sentences = [[] * self.beam_size]
         if self.check_attention:
             self.attention_scores = [np.zeros((length)) for _ in xrange(self.beam_size)]
+            self.attention_history = [[] * self.beam_size]
+
 
         # the variable for each step  
         self.beam_parent = range(self.beam_size)
@@ -83,6 +86,10 @@ class Beam:
 
         self.with_fsa = False
         self.valid_beam_size_last_step = self.beam_size
+
+        
+        
+        
 
     def init_fsa(self, fsa, fsa_weight, target_vocab_size):
         self.with_fsa = True
@@ -131,12 +138,14 @@ class Beam:
         if len(self.results) > 0:
             best_sentence = self.results[0].finished_sentence
             best_score = self.results[0].normalized_score
+            attention_history = self.results[0].attention_history
         else:
             best_sentence = []
             best_score = 0.0
+            attention_history = None
             mylog("No decoding results.")
             
-        return best_sentence, best_score
+        return best_sentence, best_score, attention_history
 
            
     def rnn_step(self,index):
@@ -184,7 +193,7 @@ class Beam:
         return top_beam_cells
 
     
-    def get_top_beam_cells_fsa(self, index, top_value, top_index, eos_value, attention_score = None):
+    def get_top_beam_cells_fsa(self, index, top_value, top_index, eos_value):
         top_beam_cells = []
 
         if index == 0:
@@ -253,6 +262,8 @@ class Beam:
         sentences = []
         if self.check_attention:
             attention_scores = []
+            attention_history = []
+            
 
         if self.with_fsa:
             fsa_states = []
@@ -269,15 +280,19 @@ class Beam:
                 finished_score = bc.score
 
                 coverage_score = 0.0
+                finished_attention_history = None
                 if self.check_attention:
                     coverage_score = self.attention_scores[bc.beam_index] + attention_score[bc.beam_index]
                     #print(finished_sentence, finished_score)
                     #print(coverage_score)
                     coverage_score = np.sum(np.log(np.minimum(coverage_score, 1.0)))
 
+                    # for attention_history
+                    finished_attention_history = self.attention_history[bc.beam_index] + [attention_score[bc.beam_index]]
+                    
 
                     
-                f = FinishedEntry(finished_sentence, finished_score, coverage_score = coverage_score)
+                f = FinishedEntry(finished_sentence, finished_score, coverage_score = coverage_score, attention_history = finished_attention_history)
                     
                 self.results.append(f)
 
@@ -288,14 +303,16 @@ class Beam:
             
             if self.print_beam:
                 self.print_current_beam(j, bc)
-                
+
             beam_parent.append(bc.beam_index)
             target_inputs.append(bc.word_index)
             scores.append(bc.score)
             sentences.append(self.sentences[bc.beam_index] + [bc.word_index])
 
+
             if self.check_attention:
                 attention_scores.append(self.attention_scores[bc.beam_index] + attention_score[bc.beam_index])
+                attention_history.append(self.attention_history[bc.beam_index] + [attention_score[bc.beam_index]])
 
             if self.with_fsa:
                 fsa_states.append(bc.fsa_state)
@@ -316,6 +333,8 @@ class Beam:
                 fsa_states.append(fsa_states[-1])
             if self.check_attention:
                 attention_scores.append(self.attention_scores[-1] + attention_score[-1])
+                attention_history.append(self.attention_history[-1] + [attention_score[-1]])
+
 
         # update for next step 
         self.beam_parent = beam_parent
@@ -327,7 +346,7 @@ class Beam:
             self.prepare_fsa_target_mask()
         if self.check_attention:
             self.attention_scores = attention_scores
-
+            self.attention_history = attention_history
 
 
 class BeamStates:

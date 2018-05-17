@@ -89,7 +89,7 @@ def visulize_by_pickle(fig_name, pickle_name):
     #plt.show()
     plt.savefig(fig_name)
     plt.gcf().clear()
-
+<
     
 
 def visulize(f,freq, d, s, fig_name):
@@ -128,7 +128,7 @@ def visulize(f,freq, d, s, fig_name):
 
 
 
-if __name__ == "__main__1":
+if __name__ == "__main__":
     folder = sys.argv[1]
     fn = os.path.join(folder, "b12.dump_lstm.pickle")
     s = load_pickle(fn)
@@ -148,7 +148,7 @@ if __name__ == "__main__1":
             print("f.shape:", f.shape)
             visulize(f,freq,data,s,fig_path)    
 
-if __name__ == "__main__":
+if __name__ == "__main__1":
     folder = sys.argv[1]
 
     for t in ["ct","ht"]:

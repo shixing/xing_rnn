@@ -23,4 +23,4 @@ source /home/nlg-05/xingshi/sh/init_tensorflow.sh
 
 
 
-python $PY --mode BEAM_DECODE --model_dir $MODEL_DIR        --test_path_from $TEST_PATH_FROM --decode_output $DECODE_OUTPUT  --size 100 --num_layers 2 --attention True --from_vocab_size 100 --to_vocab_size 100 --min_source_length 0 --max_source_length 22 --min_target_length 0 --max_target_length 22 --n_bucket 2 --N 00000 --attention_style additive --attention_scale False --beam_size 10 --length_alpha 0.5 --coverage_beta 0.5
+python $PY --mode BEAM_DECODE --model_dir $MODEL_DIR        --test_path_from $TEST_PATH_FROM --decode_output $DECODE_OUTPUT  --size 100 --num_layers 2 --attention True --from_vocab_size 100 --to_vocab_size 100 --min_source_length 0 --max_source_length 22 --min_target_length 0 --max_target_length 22 --n_bucket 2 --N 00000 --attention_style additive --attention_scale False --beam_size 10 --length_alpha 0.5 --coverage_beta 0.5 --layer_normalization True --unk_replace True --unk_replace_file $DATA_DIR/lex.s2t

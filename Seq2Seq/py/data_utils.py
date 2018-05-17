@@ -372,7 +372,15 @@ def id_to_tokens(line, to_vocab):
     return sent
   
   
-def ids_to_tokens(lines, to_vocab_path, dest_path):
+def ids_to_tokens(lines, to_vocab_path, dest_path, ttable = None, test_source_orig_tok = None):
+    # lines : [(sentences, score, attention_history)]
+
+    unk_replace = False
+    if ttable != None:
+        unk_replace = True
+
+  
+    # load vocab 
     d = []
     f = open(to_vocab_path)
     for line in f:
@@ -381,9 +389,51 @@ def ids_to_tokens(lines, to_vocab_path, dest_path):
     f.close()
 
     f = open(dest_path,'w')
+    sent_idx = 0
+    
     for line in lines:
-        sent = " ".join([d[x] for x in line[:-1]])
+        if line == None: # empty sentence
+            f.write("\n")
+            continue
+
+        words = []
+        word_idxs, score, attention_history = line
+        for i, word_idx in enumerate(word_idxs):
+            if word_idx == 2: # _EOS
+                continue
+            
+            if word_idx == 3: # _UNK
+                target_word = "_UNK"
+                if unk_replace:
+                    attention_dist = attention_history[i]
+                    attention_dist = attention_dist.reshape((-1))
+                    attent_pos = np.argmax(attention_dist)
+                    # NOTE: test_source_orig_tok is reversed
+                    attent_source_word = test_source_orig_tok[sent_idx][attent_pos]
+
+                    #print(i, word_idx)
+                    #print(attention_dist)
+                    #print(attent_pos)
+                    #print(" ".join(test_source_orig_tok[sent_idx]))
+                    #print(attent_source_word)
+                    #if attent_source_word in ttable:
+                    #    print("TTable:", ttable[attent_source_word])
+                        
+                    if attent_source_word in ttable:
+                        target_word = ttable[attent_source_word][0]
+                    else:
+                        target_word = attent_source_word
+                words.append(target_word)
+                continue
+
+            target_word = d[word_idx]
+            words.append(target_word)
+        
+        sent = " ".join(words)
         f.write(sent+"\n")
+        
+        sent_idx += 1
+        
     f.close()
     
 # rare weights
@@ -453,5 +503,15 @@ def load_vocab_weights(weight_file):
         index = int(ll[0])
         weight = float(ll[1])
         d[index] = weight
+    f.close()
+    return d
+
+def load_data_orig_reverse(path):
+    # load the original data, don't convert to ids
+    d = []
+    f = open(path)
+    for line in f:
+        words = line.split()[::-1]
+        d.append(words)
     f.close()
     return d

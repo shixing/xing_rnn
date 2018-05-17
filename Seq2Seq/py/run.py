@@ -35,11 +35,19 @@ from fsa import FSA, State
 
 from helper import get_buckets, log_flags, get_device_address, dump_graph, show_all_variables, show_all_tensors, get_buckets, read_data, read_reference, read_data_test, mkdir, parsing_flags, declare_flags, read_data_test_parallel, dump_records
 
+from unk_replace import load_lex
+
 from beam_states import Beam
 
 from bleu import sentence_level_bleu, corpus_level_bleu
 
 import cPickle
+
+##############################
+#
+# FLAGS and Global Variables
+#
+##############################
 
 declare_flags()
 FLAGS = tf.app.flags.FLAGS
@@ -123,6 +131,13 @@ def create_model(session, _FLAGS, run_options=None, run_metadata=None):
         session.run(tf.global_variables_initializer())
     return model
 
+
+
+##############################
+#
+# Train
+#
+##############################
 
 
 def train():
@@ -447,7 +462,12 @@ def evaluate(sess, model, data_set, target_vocab_weights = None, n_check_point =
     return loss, ppx, ppx_rare
 
 
-### MRT Training ###
+##############################
+#
+# MRT Trainning
+#
+##############################
+
 
 def mrt_init_decoder(sess):
     mylog("Reading Dev Data in test format ...")
@@ -792,6 +812,11 @@ def train_mrt():
                 get_batch_time = 0
 
 
+##############################
+#
+# Force Decode
+#
+##############################
 
 
 def force_decode():
@@ -885,231 +910,7 @@ def force_decode():
         dump_records(records, FLAGS.force_decode_output)
                 
 
-def force_decode_init():
-    from_test = None
-    from_vocab_path, to_vocab_path, real_vocab_size_from, real_vocab_size_to = data_utils.get_vocab_info(FLAGS.data_cache_dir)
-    
-    FLAGS._buckets = _buckets
-    FLAGS._beam_buckets = _beam_buckets
-    FLAGS.real_vocab_size_from = real_vocab_size_from
-    FLAGS.real_vocab_size_to = real_vocab_size_to
-
-    from_vocab, _ = data_utils.initialize_vocabulary(from_vocab_path)
-    _, to_vocab = data_utils.initialize_vocabulary(to_vocab_path)
-    
-    # reports
-    mylog("from_vocab_size: {}".format(FLAGS.from_vocab_size))
-    mylog("to_vocab_size: {}".format(FLAGS.to_vocab_size))
-    mylog("_beam_buckets: {}".format(FLAGS._beam_buckets))
-    mylog("BEAM_DECODE:")
-
-    config = tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)
-    config.gpu_options.allow_growth = FLAGS.allow_growth
-
-    sess = tf.Session(config=config)
-    
-    mylog("Creating Model")
-    model = create_model(sess, FLAGS, None, None)
-    show_all_variables()
-    sess.run(model.dropoutRate.assign(1.0))
-
-    from_test = None
-    from_vocab_path, to_vocab_path, real_vocab_size_from, real_vocab_size_to = data_utils.get_vocab_info(FLAGS.data_cache_dir)
-    
-    FLAGS._buckets = _buckets
-    FLAGS._beam_buckets = _beam_buckets
-    FLAGS.real_vocab_size_from = real_vocab_size_from
-    FLAGS.real_vocab_size_to = real_vocab_size_to
-
-    from_vocab, _ = data_utils.initialize_vocabulary(from_vocab_path)
-    _, to_vocab = data_utils.initialize_vocabulary(to_vocab_path)
-    
-    # reports
-    mylog("from_vocab_size: {}".format(FLAGS.from_vocab_size))
-    mylog("to_vocab_size: {}".format(FLAGS.to_vocab_size))
-    mylog("_beam_buckets: {}".format(FLAGS._beam_buckets))
-    mylog("BEAM_DECODE:")
-
-    config = tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)
-    config.gpu_options.allow_growth = FLAGS.allow_growth
-
-    sess = tf.Session(config=config)
-    
-    mylog("Creating Model")
-    model = create_model(sess, FLAGS, None, None)
-    show_all_variables()
-    sess.run(model.dropoutRate.assign(1.0))
-
-    
-
-
-
-
-
-
-
-
-
-
-
-    
-
-def beam_decode_serve():
-    from flask import Flask
-    from flask.ext.restful import reqparse, abort, Api, Resource
-    from flask import request, make_response
-    import json
-
-    app = Flask(__name__)
-    api = Api(app)
-    
-    decode_one_sentence = beam_decode_serve_init()
-    
-    class Seq2Seq(Resource):
-        def get(self):
-            parser = reqparse.RequestParser()
-            parser.add_argument("source")
-            args = parser.parse_args()
-            source = args['source']
-            source = source.encode("utf8")
-            sent = decode_one_sentence(source)
-            d = {}
-            d['output'] = sent
-            json_str = json.dumps(d, ensure_ascii=False)
-            response = make_response(json_str)
-            return response
         
-    api.add_resource(Seq2Seq, "/internal_api/seq2seq")
-
-    return app
-
-
-
-
-
-
-
-
-
-        
-        
-def beam_decode():
-
-    mylog("Reading Data...")
-
-    from_test = None
-
-    from_vocab_path, to_vocab_path, real_vocab_size_from, real_vocab_size_to = data_utils.get_vocab_info(FLAGS.data_cache_dir)
-    
-    FLAGS._buckets = _buckets
-    FLAGS._beam_buckets = _beam_buckets
-    FLAGS.real_vocab_size_from = real_vocab_size_from
-    FLAGS.real_vocab_size_to = real_vocab_size_to
-    
-    # make dir to store test.src.id
-    from_test = data_utils.prepare_test_data(
-        FLAGS.decode_output_test_id_dir,
-        FLAGS.test_path_from,
-        from_vocab_path)
-
-    test_data_bucket, test_data_order, n_test_original = read_data_test(from_test,_beam_buckets)
-
-    test_bucket_sizes = [len(test_data_bucket[b]) for b in xrange(len(_beam_buckets))]
-    test_total_size = int(sum(test_bucket_sizes))
-
-    # reports
-    mylog("from_vocab_size: {}".format(FLAGS.from_vocab_size))
-    mylog("to_vocab_size: {}".format(FLAGS.to_vocab_size))
-    mylog("_beam_buckets: {}".format(FLAGS._beam_buckets))
-    mylog("BEAM_DECODE:")
-    mylog("total: {}".format(test_total_size))
-    mylog("buckets: {}".format(test_bucket_sizes))
-    
-    # fsa
-    _fsa = None
-    if FLAGS.with_fsa:
-        if FLAGS.individual_fsa:
-            from fsa_xml import Claim2XML
-            from_index2word = data_utils.load_index2word(from_vocab_path)
-            to_word2index = data_utils.load_word2index(to_vocab_path)
-        else:
-            to_word2index = data_utils.load_word2index(to_vocab_path)
-            _fsa = FSA(FLAGS.fsa_path,to_word2index)
-            _fsa.load_fsa()
-
-
-    config = tf.ConfigProto(allow_soft_placement=True, log_device_placement = False)
-    config.gpu_options.allow_growth = FLAGS.allow_growth
-
-    with tf.Session(config=config) as sess:
-
-        # runtime profile
-        if FLAGS.profile:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-            run_metadata = tf.RunMetadata()
-        else:
-            run_options = None
-            run_metadata = None
-
-        mylog("Creating Model")
-        model = create_model(sess, FLAGS, run_options, run_metadata)
-        show_all_variables()
-
-        sess.run(model.dropoutRate.assign(1.0))
-
-        start_id = 0
-        n_steps = 0
-        batch_size = FLAGS.batch_size
-    
-        dite = DataIterator(model, test_data_bucket, len(_beam_buckets), batch_size, None, data_order = test_data_order)
-        ite = dite.next_original()
-            
-        i_sent = 0
-
-        targets = {} # {line_id: [word_id]}
-
-        for source_inputs, bucket_id, length, line_id in ite:
-
-            mylog("--- decoding {}/{} {}/{} sent ---".format(i_sent, test_total_size,line_id,n_test_original))
-            i_sent += 1
-            
-            beam = Beam(sess,
-                        model,
-                        source_inputs,
-                        length,
-                        bucket_id,
-                        FLAGS.beam_size,
-                        FLAGS.min_ratio,
-                        FLAGS.max_ratio,
-                        FLAGS.print_beam,
-                        length_alpha = FLAGS.length_alpha,
-                        coverage_beta = FLAGS.coverage_beta
-            )
-
-            if FLAGS.with_fsa:
-                if FLAGS.individual_fsa:
-                    _fsa = Claim2XML(FLAGS.fsa_path, to_word2index)
-                    _fsa.write_fsa(i_sent, source_inputs, from_index2word)
-                    _fsa.load_fsa()
-                    beam.init_fsa(_fsa, FLAGS.fsa_weight, FLAGS.real_vocab_size_to)
-                else:
-                    beam.init_fsa(_fsa, FLAGS.fsa_weight, FLAGS.real_vocab_size_to)
-                
-            best_sentence, best_score = beam.decode()
-
-            targets[line_id] = best_sentence # with EOS
-        
-        targets_in_original_order = []
-        for i in xrange(n_test_original):
-            if i in targets:
-                targets_in_original_order.append(targets[i])
-            else:
-                targets_in_original_order.append([2]) #[_EOS]
-
-        # dump to file
-        data_utils.ids_to_tokens(targets_in_original_order, to_vocab_path, FLAGS.decode_output)
-
-
 def force_decode_serve_init():
     # return session and model
 
@@ -1177,16 +978,6 @@ def force_decode_serve_init():
 
 
 
-
-
-
-
-
-
-
-
-    
-
 def force_decode_serve():
     from flask import Flask
     from flask.ext.restful import reqparse, abort, Api, Resource
@@ -1223,13 +1014,12 @@ def force_decode_serve():
 
 
 
+##############################
+#
+# Beam Decode
+#
+##############################
 
-
-
-
-
-
-        
         
 def beam_decode():
 
@@ -1293,6 +1083,13 @@ def beam_decode():
         model = create_model(sess, FLAGS, run_options, run_metadata)
         show_all_variables()
 
+        # unk replacement
+        ttable = None
+        test_source_orig_tok = None
+        if FLAGS.unk_replace:
+            ttable = load_lex(FLAGS.unk_replace_file)
+            test_source_orig_tok = data_utils.load_data_orig_reverse(FLAGS.test_path_from)
+        
         sess.run(model.dropoutRate.assign(1.0))
 
         start_id = 0
@@ -1321,7 +1118,9 @@ def beam_decode():
                         FLAGS.max_ratio,
                         FLAGS.print_beam,
                         length_alpha = FLAGS.length_alpha,
-                        coverage_beta = FLAGS.coverage_beta
+                        coverage_beta = FLAGS.coverage_beta,
+                        record_attention_history = FLAGS.unk_replace
+
             )
 
             if FLAGS.with_fsa:
@@ -1333,21 +1132,27 @@ def beam_decode():
                 else:
                     beam.init_fsa(_fsa, FLAGS.fsa_weight, FLAGS.real_vocab_size_to)
                 
-            best_sentence, best_score = beam.decode()
+            best_sentence, best_score, attention_history = beam.decode()
+            #print(np.array(attention_history))
 
-            targets[line_id] = best_sentence # with EOS
+            
+            targets[line_id] = (best_sentence, best_score, attention_history) # with EOS
+
+            
+            
         
         targets_in_original_order = []
         for i in xrange(n_test_original):
             if i in targets:
                 targets_in_original_order.append(targets[i])
             else:
-                targets_in_original_order.append([2]) #[_EOS]
+                targets_in_original_order.append(None)
 
         # dump to file
-        data_utils.ids_to_tokens(targets_in_original_order, to_vocab_path, FLAGS.decode_output)
+        data_utils.ids_to_tokens(targets_in_original_order, to_vocab_path, FLAGS.decode_output, ttable = ttable, test_source_orig_tok = test_source_orig_tok)
 
 
+        
 def beam_decode_serve_init():
     # return session and model
 
@@ -1410,6 +1215,8 @@ def beam_decode_serve_init():
 
     return decode_one_sentence
 
+
+
 def beam_decode_serve():
     from flask import Flask
     from flask.ext.restful import reqparse, abort, Api, Resource
@@ -1440,7 +1247,14 @@ def beam_decode_serve():
     return app
 
 
-        
+
+##############################
+#
+# Dump LSTM Ct and Ht
+#
+##############################
+
+
 def dump_lstm():
     # Not tested yet
     # dump the hidden states to some where
@@ -1540,10 +1354,6 @@ def dump_lstm():
         fdump.close()
         
 
-
-
-
-    
         
 def main(_):
     
